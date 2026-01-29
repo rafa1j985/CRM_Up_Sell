@@ -1,0 +1,901 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Lead, LeadStatus, STATUS_LABELS, TestType, HistoryItem } from '../types';
+import { getLeads, updateLead, deleteLead, saveLead, getMessageTemplate, saveMessageTemplate, getAllCitiesByState, getCustomCities, addCustomCity, removeCustomCity } from '../services/crmService';
+import { analyzeCRMData } from '../services/aiService';
+import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash } from 'lucide-react';
+import Analytics from './Analytics';
+import ConsultantManagement from './ConsultantManagement';
+import KanbanBoard from './KanbanBoard';
+import { v4 as uuidv4 } from 'uuid';
+import { formatPhone, STATES } from '../utils/formHelpers';
+
+interface Props {
+  currentUser: string; // 'Rafael' or 'Corat' or 'Bruna Ramalho' or 'Isabela'
+}
+
+const RafaelView: React.FC<Props> = ({ currentUser }) => {
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'analytics' | 'team' | 'register' | 'settings'>('list');
+  const [filterStatus, setFilterStatus] = useState<LeadStatus | 'ALL'>('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Advanced Filters State
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'LAST_7' | 'THIS_MONTH'>('ALL');
+  const [locationFilter, setLocationFilter] = useState('ALL');
+
+  // WhatsApp Template State
+  const [waTemplate, setWaTemplate] = useState('');
+
+  // Cities Management State
+  const [customCities, setCustomCities] = useState<{state: string, name: string}[]>([]);
+  const [newCityState, setNewCityState] = useState('');
+  const [newCityName, setNewCityName] = useState('');
+  const [citiesMap, setCitiesMap] = useState<Record<string, string[]>>({});
+
+  // Manual Register Form State
+  const [manualForm, setManualForm] = useState({
+    studentName: '',
+    whatsapp: '',
+    classCode: '',
+    notes: '',
+  });
+
+  // Note Input State (Mapped by Lead ID)
+  const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
+
+  // AI State
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiResult, setAiResult] = useState<string | null>(null);
+
+  // READ ONLY MODE CHECK (Supervisors)
+  const isReadOnly = currentUser === 'Bruna Ramalho' || currentUser === 'Isabela';
+
+  useEffect(() => {
+    loadInitialData();
+    
+    // Auto-refresh every minute to check for overdue items
+    const interval = setInterval(refreshLeads, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadInitialData = async () => {
+    await refreshLeads();
+    const tmpl = await getMessageTemplate();
+    setWaTemplate(tmpl);
+    await refreshCities();
+  };
+
+  const refreshLeads = async () => {
+    const data = await getLeads();
+    const now = Date.now();
+    const loadedLeads = data.sort((a, b) => {
+      // Priority 1: Overdue Scheduled items
+      const aOverdue = a.status === LeadStatus.SCHEDULED && a.scheduledFor && a.scheduledFor < now;
+      const bOverdue = b.status === LeadStatus.SCHEDULED && b.scheduledFor && b.scheduledFor < now;
+      
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+
+      // Priority 2: Creation Date (Newest first)
+      return b.createdAt - a.createdAt;
+    });
+    setLeads(loadedLeads);
+  };
+
+  const refreshCities = async () => {
+    setCustomCities(await getCustomCities());
+    setCitiesMap(await getAllCitiesByState());
+  };
+
+  // Compute unique locations (Class Code OR Legacy City) for the filter dropdown
+  const availableLocations = useMemo(() => {
+    const locations = new Set(leads.map(l => l.classCode || l.city || 'N/A'));
+    return Array.from(locations).sort();
+  }, [leads]);
+
+  const handleStatusChange = async (lead: Lead, newStatus: LeadStatus) => {
+    if (isReadOnly) return;
+    
+    // If changing to SCHEDULED, initialize scheduledFor if empty
+    let newScheduledFor = lead.scheduledFor;
+    if (newStatus === LeadStatus.SCHEDULED && !newScheduledFor) {
+        // Default to tomorrow 09:00
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(9, 0, 0, 0);
+        newScheduledFor = tomorrow.getTime();
+    }
+
+    const updated = { 
+      ...lead, 
+      status: newStatus,
+      scheduledFor: newScheduledFor,
+      lastUpdatedBy: currentUser
+    };
+    
+    // Optimistic update
+    setLeads(prev => prev.map(l => l.id === lead.id ? updated : l));
+    
+    await updateLead(updated);
+    refreshLeads();
+  };
+
+  const handleScheduleChange = async (lead: Lead, dateStr: string) => {
+    if (isReadOnly) return;
+    const timestamp = dateStr ? new Date(dateStr).getTime() : null;
+    const updated = { ...lead, scheduledFor: timestamp, lastUpdatedBy: currentUser };
+    
+    setLeads(prev => prev.map(l => l.id === lead.id ? updated : l));
+    
+    await updateLead(updated);
+    refreshLeads();
+  };
+
+  // --- HISTORY / TIMELINE LOGIC ---
+
+  const handleNoteInputChange = (id: string, value: string) => {
+    setNoteInputs(prev => ({ ...prev, [id]: value }));
+  };
+
+  const handleAddHistoryNote = async (lead: Lead) => {
+    if (isReadOnly) return;
+    const text = noteInputs[lead.id];
+    if (!text || text.trim() === '') return;
+
+    const newHistoryItem: HistoryItem = {
+      id: uuidv4(),
+      content: text,
+      timestamp: Date.now(),
+      author: currentUser
+    };
+
+    const updatedHistory = lead.history ? [newHistoryItem, ...lead.history] : [newHistoryItem];
+
+    const updatedLead = {
+      ...lead,
+      history: updatedHistory,
+      lastUpdatedBy: currentUser
+    };
+
+    await updateLead(updatedLead);
+    
+    // Clear input
+    setNoteInputs(prev => ({ ...prev, [lead.id]: '' }));
+    refreshLeads();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (isReadOnly) return;
+    if(window.confirm('Tem certeza que deseja excluir este lead?')) {
+        await deleteLead(id);
+        refreshLeads();
+    }
+  }
+
+  const handleManualPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhone(e.target.value);
+    setManualForm({ ...manualForm, whatsapp: formatted });
+  };
+
+  const handleManualSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isReadOnly) return;
+
+    if (manualForm.whatsapp.length < 15) {
+        alert("Por favor, preencha o WhatsApp corretamente no formato (XX) XXXXX-XXXX");
+        return;
+    }
+
+    const newLead: Lead = {
+      id: uuidv4(),
+      ...manualForm,
+      city: '',
+      paymentMethod: '',
+      consultantName: 'Landing Page (Passivo)',
+      testType: TestType.TEST_2_PASSIVE, 
+      status: LeadStatus.NEW,
+      createdAt: Date.now(),
+      lastUpdatedBy: currentUser,
+      history: []
+    };
+    await saveLead(newLead);
+    setManualForm({ studentName: '', whatsapp: '', classCode: '', notes: '' });
+    alert('Lead da Landing Page cadastrado com sucesso!');
+    refreshLeads();
+    setViewMode('list');
+  };
+
+  const handleSaveTemplate = async () => {
+    if (isReadOnly) return;
+    await saveMessageTemplate(waTemplate);
+    alert('Modelo de mensagem salvo com sucesso!');
+  };
+
+  const handleAddCity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isReadOnly) return;
+    if (newCityState && newCityName) {
+      await addCustomCity(newCityState, newCityName);
+      setNewCityName('');
+      refreshCities();
+      alert(`Cidade ${newCityName} - ${newCityState} adicionada à lista.`);
+    }
+  };
+
+  const handleRemoveCity = async (state: string, name: string) => {
+    if (isReadOnly) return;
+    if (window.confirm(`Remover a cidade ${name} - ${state} da lista manual?`)) {
+      await removeCustomCity(state, name);
+      refreshCities();
+    }
+  };
+
+  // --- COPY FUNCTIONS ---
+
+  const formatLeadHistory = (lead: Lead) => {
+    const scheduleInfo = lead.status === LeadStatus.SCHEDULED && lead.scheduledFor 
+      ? `\nAgendado para: ${new Date(lead.scheduledFor).toLocaleString()}` 
+      : '';
+
+    let historyText = '';
+    if (lead.history && lead.history.length > 0) {
+        historyText = lead.history.map(h => 
+            `${new Date(h.timestamp).toLocaleString()} (${h.author}): ${h.content}`
+        ).join('\n');
+    } else {
+        historyText = lead.managerNotes ? `(Legado): ${lead.managerNotes}` : 'Nenhuma interação registrada.';
+    }
+
+    return `
+=== HISTÓRICO DO CLIENTE ===
+Nome: ${lead.studentName}
+WhatsApp: ${lead.whatsapp}
+Turma: ${lead.classCode || lead.city || 'N/A'}
+Status Atual: ${STATUS_LABELS[lead.status]}${scheduleInfo}
+Consultor Origem: ${lead.consultantName}
+Tipo de Teste: ${lead.testType === TestType.TEST_1_ACTIVE ? 'Ativo' : 'Passivo (LP)'}
+
+-- Observações do Consultor --
+${lead.notes || 'Nenhuma observação.'}
+
+-- Linha do Tempo (Interações) --
+${historyText}
+============================
+`.trim();
+  };
+
+  const handleCopyLeadHistory = (lead: Lead) => {
+    const text = formatLeadHistory(lead);
+    navigator.clipboard.writeText(text);
+    alert(`Histórico de ${lead.studentName} copiado!`);
+  };
+
+  const handleCopyAllHistory = () => {
+    if (leads.length === 0) {
+      alert("Não há leads para copiar.");
+      return;
+    }
+    const allText = leads.map(l => formatLeadHistory(l)).join('\n\n\n');
+    navigator.clipboard.writeText(allText);
+    alert("Histórico COMPLETO de todos os clientes copiado!");
+  };
+
+  // --- AI ANALYSIS ---
+  
+  const handleRunAI = async () => {
+    if (leads.length === 0) {
+      alert("Não há dados suficientes para análise.");
+      return;
+    }
+    setIsAnalyzing(true);
+    setAiResult(null);
+    const result = await analyzeCRMData(leads);
+    setAiResult(result);
+    setIsAnalyzing(false);
+  };
+
+  const generateWhatsAppLink = (lead: Lead) => {
+    const cleanNumber = lead.whatsapp.replace(/\D/g, '');
+    let message = waTemplate;
+    
+    // Replace variables
+    message = message.replace(/{cliente}/g, lead.studentName);
+    message = message.replace(/{consultor}/g, lead.consultantName);
+    message = message.replace(/{cidade}/g, lead.classCode || lead.city || 'sua cidade');
+
+    return `https://wa.me/55${cleanNumber}?text=${encodeURIComponent(message)}`;
+  };
+
+  // Helper for input type=datetime-local
+  const timestampToInput = (ts?: number | null) => {
+    if (!ts) return '';
+    const date = new Date(ts);
+    const pad = (n: number) => n < 10 ? '0' + n : n;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+
+  const filteredLeads = leads.filter(lead => {
+    // 1. View Mode / Status Filter
+    const matchesStatus = viewMode === 'kanban' ? true : (filterStatus === 'ALL' || lead.status === filterStatus);
+    
+    // 2. Search Text
+    const matchesSearch = lead.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          lead.consultantName.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // 3. Location Filter
+    const matchesLocation = locationFilter === 'ALL' || 
+                            (lead.classCode === locationFilter) || 
+                            (lead.city === locationFilter);
+
+    // 4. Date Filter
+    let matchesDate = true;
+    const leadDate = new Date(lead.createdAt);
+    const now = new Date();
+
+    if (dateFilter === 'TODAY') {
+      matchesDate = leadDate.toDateString() === now.toDateString();
+    } else if (dateFilter === 'LAST_7') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      matchesDate = leadDate >= sevenDaysAgo;
+    } else if (dateFilter === 'THIS_MONTH') {
+      matchesDate = leadDate.getMonth() === now.getMonth() && leadDate.getFullYear() === now.getFullYear();
+    }
+
+    return matchesStatus && matchesSearch && matchesLocation && matchesDate;
+  });
+
+  const getStatusColor = (status: LeadStatus) => {
+    switch (status) {
+      case LeadStatus.NEW: return 'bg-blue-100 text-blue-800';
+      case LeadStatus.TODO: return 'bg-purple-100 text-purple-800';
+      case LeadStatus.CONTACTED: return 'bg-yellow-100 text-yellow-800';
+      case LeadStatus.WAITING: return 'bg-orange-100 text-orange-800';
+      case LeadStatus.SCHEDULED: return 'bg-indigo-100 text-indigo-800';
+      case LeadStatus.WON_3Y: return 'bg-emerald-100 text-emerald-800';
+      case LeadStatus.WON_LIFETIME: return 'bg-green-100 text-green-900 border border-green-200';
+      case LeadStatus.LOST: return 'bg-gray-100 text-gray-500';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const isLeadOverdue = (lead: Lead) => {
+    return lead.status === LeadStatus.SCHEDULED && lead.scheduledFor && lead.scheduledFor < Date.now();
+  };
+
+  return (
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto relative">
+      
+      {/* AI Modal Result */}
+      {aiResult && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-indigo-600 to-purple-600 rounded-t-xl text-white">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Sparkles size={20} className="text-yellow-300" />
+                Análise de Inteligência Artificial
+              </h2>
+              <button onClick={() => setAiResult(null)} className="hover:bg-white/20 p-1 rounded transition">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto text-gray-800 leading-relaxed space-y-4">
+               <div className="whitespace-pre-wrap font-sans text-sm md:text-base">
+                 {aiResult}
+               </div>
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end">
+              <button 
+                onClick={() => setAiResult(null)}
+                className="bg-gray-800 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-900"
+              >
+                Fechar Análise
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            Painel do Manager
+            {isReadOnly && (
+              <span title="Modo Leitura">
+                <Shield size={20} className="text-blue-500" />
+              </span>
+            )}
+          </h1>
+          <p className="text-gray-500">Logado como: <strong className="text-emerald-600">{currentUser}</strong></p>
+        </div>
+        
+        <div className="flex flex-wrap gap-2">
+           {/* Global Actions */}
+           <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm mr-2">
+             <button
+               onClick={handleCopyAllHistory}
+               className="px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition"
+               title="Copiar histórico de TODOS os clientes"
+             >
+               <ClipboardCopy size={18} />
+               Copiar Tudo
+             </button>
+             <button
+               onClick={handleRunAI}
+               disabled={isAnalyzing}
+               className={`px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition ${isAnalyzing ? 'bg-indigo-100 text-indigo-400 cursor-wait' : 'text-indigo-700 hover:bg-indigo-50 bg-indigo-50 border border-indigo-100'}`}
+               title="Analisar dados com IA"
+             >
+               <Sparkles size={18} className={isAnalyzing ? 'animate-spin' : ''} />
+               {isAnalyzing ? 'Analisando...' : 'IA Insight'}
+             </button>
+           </div>
+
+           {/* View Modes */}
+           <div className="flex flex-wrap gap-2 bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
+             <button
+              onClick={() => setViewMode('list')}
+              className={`px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition ${viewMode === 'list' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              <List size={18} />
+              Lista
+            </button>
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={`px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition ${viewMode === 'kanban' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              <LayoutDashboard size={18} />
+              Quadro
+            </button>
+            <button
+              onClick={() => setViewMode('analytics')}
+              className={`px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition ${viewMode === 'analytics' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              <BarChart2 size={18} />
+              Métricas
+            </button>
+            <button
+              onClick={() => setViewMode('team')}
+              className={`px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition ${viewMode === 'team' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              <Users size={18} />
+              Equipe
+            </button>
+            
+            {/* HIDE FOR READ ONLY */}
+            {!isReadOnly && (
+              <>
+                <button
+                  onClick={() => setViewMode('register')}
+                  className={`px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition ${viewMode === 'register' ? 'bg-blue-600 text-white shadow-sm' : 'text-blue-600 hover:bg-blue-50 border border-blue-200'}`}
+                >
+                  <PlusCircle size={18} />
+                  Cadastro LP
+                </button>
+                <button
+                  onClick={() => setViewMode('settings')}
+                  className={`px-4 py-2 rounded-md flex items-center gap-2 text-sm font-medium transition ${viewMode === 'settings' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+                  title="Configurações (Msg)"
+                >
+                  <Settings size={18} />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Search Bar & Filters */}
+      {(viewMode === 'list' || viewMode === 'kanban') && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 transition-all">
+          
+          <div className="p-4 flex flex-col md:flex-row gap-4 items-center">
+             {/* Search Input */}
+             <div className="flex-1 relative w-full">
+                <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por aluno ou consultor..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 block w-full rounded-md border-gray-300 border p-2 focus:ring-emerald-500 focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Toggle Advanced Filters Button */}
+              <button 
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition ${showAdvancedFilters ? 'bg-indigo-50 text-indigo-600 border border-indigo-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'}`}
+              >
+                <SlidersHorizontal size={16} />
+                Filtros
+              </button>
+          </div>
+
+          {/* Expanded Filters Area */}
+          {showAdvancedFilters && (
+            <div className="p-4 border-t border-gray-100 bg-gray-50/50 rounded-b-lg grid grid-cols-1 md:grid-cols-3 gap-4 animate-in slide-in-from-top-2">
+                
+                {/* Status Filter (Only for List Mode) */}
+                {viewMode === 'list' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1 flex items-center gap-1">
+                      <Filter size={12} /> Status
+                    </label>
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value as LeadStatus | 'ALL')}
+                      className="block w-full rounded-md border-gray-300 border p-2 text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                    >
+                      <option value="ALL">Todos os Status</option>
+                      {Object.entries(STATUS_LABELS).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Date Filter */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1 flex items-center gap-1">
+                    <Calendar size={12} /> Data de Cadastro
+                  </label>
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as any)}
+                    className="block w-full rounded-md border-gray-300 border p-2 text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                  >
+                    <option value="ALL">Todo o Período</option>
+                    <option value="TODAY">Hoje</option>
+                    <option value="LAST_7">Últimos 7 dias</option>
+                    <option value="THIS_MONTH">Este Mês</option>
+                  </select>
+                </div>
+
+                {/* Location Filter */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1 flex items-center gap-1">
+                    <Hash size={12} /> Filtrar por Turma/Cidade
+                  </label>
+                  <select
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                    className="block w-full rounded-md border-gray-300 border p-2 text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                  >
+                    <option value="ALL">Todas as Turmas</option>
+                    {availableLocations.map((loc) => (
+                      <option key={loc} value={loc}>{loc}</option>
+                    ))}
+                  </select>
+                </div>
+
+            </div>
+          )}
+        </div>
+      )}
+
+      {viewMode === 'team' && <ConsultantManagement readOnly={isReadOnly} />}
+
+      {viewMode === 'analytics' && <Analytics leads={leads} />}
+      
+      {viewMode === 'kanban' && (
+        <KanbanBoard 
+          leads={filteredLeads} 
+          onStatusChange={handleStatusChange}
+          onScheduleChange={handleScheduleChange}
+          isReadOnly={isReadOnly}
+        />
+      )}
+
+      {/* Settings Panel */}
+      {viewMode === 'settings' && !isReadOnly && (
+        <div className="max-w-4xl mx-auto space-y-8">
+           {/* WhatsApp Config */}
+           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-8">
+            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+              <div className="bg-slate-100 p-3 rounded-full text-slate-600">
+                <MessageSquare size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Modelo de Mensagem WhatsApp</h2>
+                <p className="text-sm text-gray-500">Configure o texto automático.</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Mensagem Padrão</label>
+                <textarea
+                  rows={5}
+                  value={waTemplate}
+                  onChange={(e) => setWaTemplate(e.target.value)}
+                  className="block w-full rounded-md border-gray-300 border p-3 focus:ring-emerald-500 focus:border-emerald-500 font-mono text-sm"
+                />
+              </div>
+              <div className="pt-2">
+                 <button onClick={handleSaveTemplate} className="bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-700 transition flex items-center gap-2">
+                  <Save size={18} /> Salvar Modelo
+                </button>
+              </div>
+            </div>
+          </div>
+          
+           {/* Cities Config */}
+           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-8">
+             {/* ... Cities UI code ... */}
+             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+              <div className="bg-indigo-100 p-3 rounded-full text-indigo-600">
+                <MapPin size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Gerenciar Cidades (Legado)</h2>
+              </div>
+            </div>
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                <select value={newCityState} onChange={(e) => setNewCityState(e.target.value)} className="block w-full rounded-md border-gray-300 border p-2.5 bg-white">
+                  <option value="">Selecione...</option>
+                  {STATES.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                <input type="text" value={newCityName} onChange={(e) => setNewCityName(e.target.value)} className="block w-full rounded-md border-gray-300 border p-2.5" />
+              </div>
+              <div className="flex items-end">
+                <button onClick={handleAddCity} className="w-full bg-indigo-600 text-white font-bold py-2.5 rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2"><PlusCircle size={18} /> Adicionar</button>
+              </div>
+            </div>
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Cidades Adicionadas Manualmente:</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {customCities.map((c, idx) => (
+                    <div key={`${c.state}-${c.name}-${idx}`} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
+                      <span className="text-sm text-gray-700">{c.name} - <strong>{c.state}</strong></span>
+                      <button onClick={() => handleRemoveCity(c.state, c.name)} className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+            </div>
+           </div>
+        </div>
+      )}
+
+      {viewMode === 'register' && !isReadOnly && (
+         <div className="max-w-2xl mx-auto">
+           <div className="bg-white rounded-xl shadow-lg border border-blue-200 p-8">
+             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+               <div className="bg-blue-100 p-3 rounded-full text-blue-600">
+                 <PlusCircle size={24} />
+               </div>
+               <div>
+                 <h2 className="text-xl font-bold text-gray-900">Cadastro Manual (Teste 2)</h2>
+                 <p className="text-sm text-gray-500">Registre aqui os leads que vieram da <strong>Landing Page (Passivo)</strong>.</p>
+               </div>
+             </div>
+
+             <form onSubmit={handleManualSubmit} className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Aluno</label>
+                  <input required type="text" value={manualForm.studentName} onChange={(e) => setManualForm({...manualForm, studentName: e.target.value})} className="block w-full rounded-md border-gray-300 border p-2.5" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp</label>
+                  <input required type="tel" value={manualForm.whatsapp} onChange={handleManualPhoneChange} className="block w-full rounded-md border-gray-300 border p-2.5" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">CÓDIGO DA TURMA</label>
+                  <input required type="text" value={manualForm.classCode} onChange={(e) => setManualForm({...manualForm, classCode: e.target.value})} className="block w-full rounded-md border-gray-300 border p-2.5 uppercase" placeholder="Ex: T25-SP" />
+                </div>
+                
+                <div className="pt-2">
+                  <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2">
+                    <Save size={20} /> Salvar
+                  </button>
+                </div>
+             </form>
+           </div>
+        </div>
+      )}
+      
+      {viewMode === 'list' && (
+        <div className="grid grid-cols-1 gap-4">
+            {filteredLeads.length === 0 ? (
+                <div className="text-center py-16 text-gray-500 bg-white rounded-lg border border-dashed border-gray-300">
+                    <p className="text-lg font-medium">Nenhum aluno encontrado</p>
+                    <p className="text-sm">Tente ajustar os filtros ou aguarde novos cadastros.</p>
+                </div>
+            ) : (
+                filteredLeads.map((lead) => {
+                  const overdue = isLeadOverdue(lead);
+                  return (
+                    <div key={lead.id} className={`bg-white border rounded-lg shadow-sm hover:shadow-md transition-shadow p-4 sm:p-6 flex flex-col md:flex-row gap-4 ${overdue ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2 flex-wrap">
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(lead.status)}`}>
+                            {STATUS_LABELS[lead.status]}
+                          </span>
+                          
+                          {overdue && (
+                             <span className="flex items-center gap-1 text-xs font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded border border-red-200 animate-pulse">
+                               <AlertCircle size={12} />
+                               ATRASADO
+                             </span>
+                          )}
+
+                          <span className="text-xs text-gray-500 flex items-center gap-1">
+                             {new Date(lead.createdAt).toLocaleDateString()}
+                          </span>
+                          {lead.testType === TestType.TEST_2_PASSIVE ? (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded border border-blue-200 font-bold">LP</span>
+                          ) : (
+                              <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-bold">Ativo</span>
+                          )}
+                          {lead.lastUpdatedBy && (
+                            <span className="text-xs text-gray-400 italic ml-auto md:ml-2">
+                              Atualizado por: {lead.lastUpdatedBy}
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="flex justify-between items-start">
+                          <h3 className="text-lg font-bold text-gray-900 mb-1">{lead.studentName}</h3>
+                          <button
+                            onClick={() => handleCopyLeadHistory(lead)}
+                            className="text-gray-400 hover:text-indigo-600 transition"
+                            title="Copiar Histórico deste Lead"
+                          >
+                            <Copy size={16} />
+                          </button>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-sm text-gray-600 mb-3">
+                          <p className="flex items-center gap-2">
+                            <Phone size={14} /> 
+                            <a href={generateWhatsAppLink(lead)} target="_blank" rel="noreferrer" className="hover:text-emerald-600 underline">
+                              {lead.whatsapp}
+                            </a>
+                          </p>
+                          <p>Origem: <span className="font-medium">{lead.consultantName}</span></p>
+                          <p className="flex items-center gap-1 font-semibold">
+                             <Hash size={14} className="text-gray-400" />
+                             Turma: {lead.classCode || lead.city || 'N/A'}
+                          </p>
+                        </div>
+
+                        {/* --- NEW TIMELINE SECTION --- */}
+                        <div className="mt-4 border-t border-gray-100 pt-3">
+                          <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-gray-500 uppercase">
+                             <History size={14} />
+                             Linha do Tempo
+                          </div>
+                          
+                          {/* Scrollable History Area */}
+                          <div className="bg-gray-50 rounded-lg border border-gray-200 p-3 max-h-48 overflow-y-auto mb-3 space-y-3 custom-scrollbar">
+                             {/* Consultant Notes (Static) */}
+                             {lead.notes && (
+                                <div className="flex gap-2 text-sm">
+                                   <div className="w-1 bg-gray-300 rounded-full flex-shrink-0"></div>
+                                   <div>
+                                     <p className="text-xs text-gray-500 font-medium">Nota Inicial (Consultor)</p>
+                                     <p className="text-gray-700 italic">"{lead.notes}"</p>
+                                   </div>
+                                </div>
+                             )}
+
+                             {/* Legacy Manager Notes */}
+                             {lead.managerNotes && !lead.history?.length && (
+                                 <div className="flex gap-2 text-sm opacity-70">
+                                   <div className="w-1 bg-yellow-300 rounded-full flex-shrink-0"></div>
+                                   <div>
+                                     <p className="text-xs text-gray-500 font-medium">Nota Antiga (Manager)</p>
+                                     <p className="text-gray-700">"{lead.managerNotes}"</p>
+                                   </div>
+                                </div>
+                             )}
+
+                             {/* Timeline Items */}
+                             {lead.history?.map((item) => (
+                                <div key={item.id} className="flex gap-2 text-sm">
+                                   <div className="w-1 bg-emerald-400 rounded-full flex-shrink-0"></div>
+                                   <div>
+                                     <p className="text-xs text-gray-500 font-medium">
+                                       {new Date(item.timestamp).toLocaleString()} • {item.author}
+                                     </p>
+                                     <p className="text-gray-800">{item.content}</p>
+                                   </div>
+                                </div>
+                             ))}
+
+                             {(!lead.notes && (!lead.history || lead.history.length === 0) && !lead.managerNotes) && (
+                               <p className="text-xs text-gray-400 italic text-center py-2">Nenhuma interação registrada.</p>
+                             )}
+                          </div>
+
+                          {/* Add Note Input */}
+                          {!isReadOnly && (
+                            <div className="flex gap-2">
+                               <input 
+                                 type="text" 
+                                 className="flex-1 text-sm border-gray-300 rounded-md shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                                 placeholder="Escreva uma nova nota..."
+                                 value={noteInputs[lead.id] || ''}
+                                 onChange={(e) => handleNoteInputChange(lead.id, e.target.value)}
+                                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddHistoryNote(lead); }}
+                               />
+                               <button 
+                                 onClick={() => handleAddHistoryNote(lead)}
+                                 className="bg-emerald-600 text-white p-2 rounded-md hover:bg-emerald-700 transition"
+                                 title="Adicionar Nota"
+                               >
+                                 <Send size={16} />
+                               </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-col gap-2 justify-start border-t md:border-t-0 md:border-l md:pl-6 border-gray-100 min-w-[200px] mt-4 md:mt-0 pt-4 md:pt-0">
+                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mudar Status</label>
+                          <select
+                              value={lead.status}
+                              onChange={(e) => handleStatusChange(lead, e.target.value as LeadStatus)}
+                              className="block w-full rounded-md border-gray-300 border p-2 text-sm focus:ring-emerald-500 focus:border-emerald-500 disabled:bg-gray-50 disabled:text-gray-500"
+                              disabled={isReadOnly}
+                          >
+                              {Object.entries(STATUS_LABELS).map(([key, label]) => (
+                                  <option key={key} value={key}>{label}</option>
+                              ))}
+                          </select>
+
+                          {/* SCHEDULE DATE INPUT */}
+                          {lead.status === LeadStatus.SCHEDULED && (
+                             <div className="bg-indigo-50 p-2 rounded border border-indigo-100">
+                                <label className="text-[10px] font-bold text-indigo-700 uppercase flex items-center gap-1 mb-1">
+                                   <Calendar size={10} />
+                                   Agendar Para:
+                                </label>
+                                <input 
+                                  type="datetime-local"
+                                  className="w-full text-xs p-1 rounded border border-indigo-200 focus:border-indigo-500"
+                                  value={timestampToInput(lead.scheduledFor)}
+                                  onChange={(e) => handleScheduleChange(lead, e.target.value)}
+                                  disabled={isReadOnly}
+                                />
+                             </div>
+                          )}
+
+                          <div className="mt-2 flex gap-2">
+                              <a 
+                                 href={generateWhatsAppLink(lead)}
+                                 target="_blank" 
+                                 rel="noreferrer"
+                                 className="flex-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 text-center py-2 rounded text-sm font-medium transition"
+                              >
+                                  WhatsApp
+                              </a>
+                              {!isReadOnly && (
+                                <button 
+                                    onClick={() => handleDelete(lead.id)}
+                                    className="p-2 text-gray-400 hover:text-red-500 transition"
+                                    title="Excluir"
+                                >
+                                    <Trash2 size={18} />
+                                </button>
+                              )}
+                          </div>
+                      </div>
+                    </div>
+                  );
+                })
+            )}
+          </div>
+      )}
+    </div>
+  );
+};
+
+export default RafaelView;
