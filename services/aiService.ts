@@ -6,14 +6,16 @@ import { Lead, LeadStatus, TestType } from '../types';
 // Exemplo: const API_KEY = 'AIzaSyD...';
 const API_KEY = 'COLE_SUA_CHAVE_GEMINI_AQUI';
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
 export const analyzeCRMData = async (leads: Lead[]): Promise<string> => {
-  if (API_KEY === 'COLE_SUA_CHAVE_GEMINI_AQUI' || !API_KEY) {
-    return "⚠️ Configuração Pendente: Por favor, adicione sua chave API do Google Gemini no arquivo 'services/aiService.ts' para habilitar a IA.";
+  // Check key availability safely inside the function
+  if (!API_KEY || API_KEY.includes('COLE_SUA_CHAVE')) {
+    return "⚠️ Configuração Pendente: Por favor, adicione sua chave API do Google Gemini no arquivo 'services/aiService.ts' e faça o deploy novamente para habilitar a IA.";
   }
 
   try {
+    // Initialize lazily to avoid crashes on app load if key is bad
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
+
     // 1. Prepare data for the AI (simplify to reduce token usage and focus on relevant info)
     const simplifiedLeads = leads.map(l => ({
       status: l.status,
