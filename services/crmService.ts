@@ -1,5 +1,6 @@
+
 import { createClient } from '@supabase/supabase-js';
-import { Lead, Consultant } from '../types';
+import { Lead, Consultant, PipelineStage } from '../types';
 import { CITIES_BY_STATE } from '../utils/formHelpers';
 
 // --- CONFIGURAÇÃO SUPABASE ---
@@ -10,6 +11,17 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DEFAULT_TEMPLATE = `Bom dia, {cliente}! Aqui é o Rafael Juliano da VOLL. A {consultor} me falou de você! Que de tudo certo no seu curso em {cidade}!
 Eu posso te mandar um audio ou te ligar para falar da ação que fazemos em fevereiro? O que você prefere? Ligação ou audio?`;
+
+// --- DEFAULT PIPELINE STAGES ---
+export const DEFAULT_STAGES: PipelineStage[] = [
+  { id: 'NEW', title: 'Novo', color: 'blue', type: 'OPEN', order: 0 },
+  { id: 'TODO', title: 'A Fazer', color: 'purple', type: 'OPEN', order: 1 },
+  { id: 'CONTACTED', title: 'Contatado', color: 'yellow', type: 'OPEN', order: 2 },
+  { id: 'SCHEDULED', title: 'Agendado', color: 'indigo', type: 'OPEN', order: 3 },
+  { id: 'WON_3Y', title: 'Venda 3 Anos', color: 'emerald', type: 'WON', order: 4 },
+  { id: 'WON_LIFETIME', title: 'Venda Vitalício', color: 'green', type: 'WON', order: 5 },
+  { id: 'LOST', title: 'Perdido', color: 'gray', type: 'LOST', order: 6 },
+];
 
 // --- HELPER MAPPERS (CamelCase <-> SnakeCase) ---
 
@@ -160,11 +172,7 @@ export const authenticateManager = (username: string, password: string): string 
   return null;
 };
 
-// --- SETTINGS (WhatsApp Template & Custom Cities) ---
-
-// We will use the 'app_settings' table. 
-// Key: 'whatsapp_template' -> Value: String
-// Key: 'custom_cities' -> Value: JSON String
+// --- SETTINGS (WhatsApp Template & Custom Cities & Pipeline Stages) ---
 
 export const getMessageTemplate = async (): Promise<string> => {
   const { data } = await supabase
@@ -183,6 +191,34 @@ export const saveMessageTemplate = async (template: string): Promise<void> => {
   
   if (error) console.error('Erro ao salvar template:', error);
 };
+
+// Pipeline Stages
+export const getPipelineStages = async (): Promise<PipelineStage[]> => {
+  const { data } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'pipeline_stages')
+    .single();
+
+  if (data?.value) {
+    try {
+      return JSON.parse(data.value);
+    } catch (e) {
+      console.error("Erro parsing stages", e);
+      return DEFAULT_STAGES;
+    }
+  }
+  return DEFAULT_STAGES;
+};
+
+export const savePipelineStages = async (stages: PipelineStage[]): Promise<void> => {
+  const { error } = await supabase
+    .from('app_settings')
+    .upsert({ key: 'pipeline_stages', value: JSON.stringify(stages) });
+  
+  if (error) console.error('Erro ao salvar estágios:', error);
+};
+
 
 // --- CITIES MANAGEMENT ---
 
@@ -254,8 +290,6 @@ export const getAllCitiesByState = async (): Promise<Record<string, string[]>> =
   return merged;
 };
 
-// Seed data function removed/disabled as it's not needed for Supabase production use
-// unless explicitly requested to migrate local data.
 export const seedDatabase = () => {
   console.log("Database seed skipped for Supabase.");
 };

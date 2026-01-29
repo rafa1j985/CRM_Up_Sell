@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { Lead, LeadStatus, STATUS_LABELS, TestType, HistoryItem, Consultant } from '../types';
-import { getLeads, updateLead, deleteLead, saveLead, getMessageTemplate, saveMessageTemplate, getAllCitiesByState, getCustomCities, addCustomCity, removeCustomCity, getConsultants } from '../services/crmService';
+import { Lead, TestType, HistoryItem, Consultant, PipelineStage, StageType } from '../types';
+import { getLeads, updateLead, deleteLead, saveLead, getMessageTemplate, saveMessageTemplate, getAllCitiesByState, getCustomCities, addCustomCity, removeCustomCity, getConsultants, getPipelineStages, savePipelineStages } from '../services/crmService';
 import { analyzeCRMData } from '../services/aiService';
-import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash } from 'lucide-react';
+import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
 import Analytics from './Analytics';
 import ConsultantManagement from './ConsultantManagement';
 import KanbanBoard from './KanbanBoard';
@@ -16,8 +17,9 @@ interface Props {
 const RafaelView: React.FC<Props> = ({ currentUser }) => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [consultants, setConsultants] = useState<Consultant[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'analytics' | 'team' | 'register' | 'settings'>('list');
-  const [filterStatus, setFilterStatus] = useState<LeadStatus | 'ALL'>('ALL');
+  const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Advanced Filters State
@@ -33,6 +35,9 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
   const [newCityState, setNewCityState] = useState('');
   const [newCityName, setNewCityName] = useState('');
   const [citiesMap, setCitiesMap] = useState<Record<string, string[]>>({});
+
+  // Pipeline Management State
+  const [editingStages, setEditingStages] = useState<PipelineStage[]>([]);
 
   // Manual Register Form State
   const [manualForm, setManualForm] = useState({
@@ -62,6 +67,7 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
 
   const loadInitialData = async () => {
     await refreshLeads();
+    await refreshPipeline();
     // Load consultants for Analytics mapping
     const loadedConsultants = await getConsultants();
     setConsultants(loadedConsultants);
@@ -76,8 +82,12 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     const now = Date.now();
     const loadedLeads = data.sort((a, b) => {
       // Priority 1: Overdue Scheduled items
-      const aOverdue = a.status === LeadStatus.SCHEDULED && a.scheduledFor && a.scheduledFor < now;
-      const bOverdue = b.status === LeadStatus.SCHEDULED && b.scheduledFor && b.scheduledFor < now;
+      // Check if status is "SCHEDULED" type... simple check for ID containing SCHEDULED or relying on type map later
+      // For legacy consistency we check ID 'SCHEDULED', but technically any stage can have a date.
+      // We will assume only the stage with ID 'SCHEDULED' or type 'OPEN' + date implies schedule logic
+      
+      const aOverdue = a.scheduledFor && a.scheduledFor < now && a.status === 'SCHEDULED';
+      const bOverdue = b.scheduledFor && b.scheduledFor < now && b.status === 'SCHEDULED';
       
       if (aOverdue && !bOverdue) return -1;
       if (!aOverdue && bOverdue) return 1;
@@ -93,18 +103,52 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     setCitiesMap(await getAllCitiesByState());
   };
 
+  const refreshPipeline = async () => {
+    const stages = await getPipelineStages();
+    setPipelineStages(stages);
+    setEditingStages(JSON.parse(JSON.stringify(stages))); // Copy for editing
+  };
+
   // Compute unique locations (Class Code OR Legacy City) for the filter dropdown
   const availableLocations = useMemo(() => {
     const locations = new Set(leads.map(l => l.classCode || l.city || 'N/A'));
     return Array.from(locations).sort();
   }, [leads]);
 
-  const handleStatusChange = async (lead: Lead, newStatus: LeadStatus) => {
+  // Helper to get Label
+  const getStatusLabel = (statusId: string) => {
+    const stage = pipelineStages.find(s => s.id === statusId);
+    return stage ? stage.title : statusId;
+  };
+  
+  const getStatusColorClass = (statusId: string) => {
+      const stage = pipelineStages.find(s => s.id === statusId);
+      if (!stage) return 'bg-gray-100 text-gray-800';
+      
+      // Map simple color names to tailwind classes
+      const colors: Record<string, string> = {
+          blue: 'bg-blue-100 text-blue-800 border-blue-200',
+          green: 'bg-green-100 text-green-800 border-green-200',
+          emerald: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+          red: 'bg-red-100 text-red-800 border-red-200',
+          yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+          purple: 'bg-purple-100 text-purple-800 border-purple-200',
+          indigo: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+          orange: 'bg-orange-100 text-orange-800 border-orange-200',
+          gray: 'bg-gray-100 text-gray-800 border-gray-200',
+          pink: 'bg-pink-100 text-pink-800 border-pink-200',
+          cyan: 'bg-cyan-100 text-cyan-800 border-cyan-200'
+      };
+      
+      return colors[stage.color] || colors['gray'];
+  };
+
+  const handleStatusChange = async (lead: Lead, newStatus: string) => {
     if (isReadOnly) return;
     
     // If changing to SCHEDULED, initialize scheduledFor if empty
     let newScheduledFor = lead.scheduledFor;
-    if (newStatus === LeadStatus.SCHEDULED && !newScheduledFor) {
+    if (newStatus === 'SCHEDULED' && !newScheduledFor) {
         // Default to tomorrow 09:00
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
@@ -135,6 +179,50 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     
     await updateLead(updated);
     refreshLeads();
+  };
+
+  // --- PIPELINE MANAGEMENT ---
+  const handleMoveStage = (index: number, direction: 'up' | 'down') => {
+      const newStages = [...editingStages];
+      if (direction === 'up' && index > 0) {
+          [newStages[index], newStages[index - 1]] = [newStages[index - 1], newStages[index]];
+      } else if (direction === 'down' && index < newStages.length - 1) {
+          [newStages[index], newStages[index + 1]] = [newStages[index + 1], newStages[index]];
+      }
+      setEditingStages(newStages);
+  };
+
+  const handleDeleteStage = (index: number) => {
+      if (window.confirm("Tem certeza? Leads nesta etapa ficarão invisíveis no Kanban até serem movidos.")) {
+          const newStages = editingStages.filter((_, i) => i !== index);
+          setEditingStages(newStages);
+      }
+  };
+
+  const handleAddStage = () => {
+      const id = uuidv4().split('-')[0].toUpperCase();
+      const newStage: PipelineStage = {
+          id: `STAGE_${id}`,
+          title: 'Nova Etapa',
+          color: 'gray',
+          type: 'OPEN',
+          order: editingStages.length
+      };
+      setEditingStages([...editingStages, newStage]);
+  };
+
+  const handleUpdateStage = (index: number, field: keyof PipelineStage, value: any) => {
+      const newStages = [...editingStages];
+      newStages[index] = { ...newStages[index], [field]: value };
+      setEditingStages(newStages);
+  };
+
+  const handleSavePipeline = async () => {
+      // Re-index order just in case
+      const ordered = editingStages.map((s, idx) => ({ ...s, order: idx }));
+      await savePipelineStages(ordered);
+      await refreshPipeline();
+      alert('Funil atualizado com sucesso!');
   };
 
   // --- HISTORY / TIMELINE LOGIC ---
@@ -192,6 +280,8 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
         return;
     }
 
+    const defaultStage = pipelineStages.length > 0 ? pipelineStages[0].id : 'NEW';
+
     const newLead: Lead = {
       id: uuidv4(),
       ...manualForm,
@@ -199,7 +289,7 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
       paymentMethod: '',
       consultantName: 'Landing Page (Passivo)',
       testType: TestType.TEST_2_PASSIVE, 
-      status: LeadStatus.NEW,
+      status: defaultStage,
       createdAt: Date.now(),
       lastUpdatedBy: currentUser,
       history: []
@@ -239,7 +329,7 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
   // --- COPY FUNCTIONS ---
 
   const formatLeadHistory = (lead: Lead) => {
-    const scheduleInfo = lead.status === LeadStatus.SCHEDULED && lead.scheduledFor 
+    const scheduleInfo = lead.status === 'SCHEDULED' && lead.scheduledFor 
       ? `\nAgendado para: ${new Date(lead.scheduledFor).toLocaleString()}` 
       : '';
 
@@ -257,7 +347,7 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
 Nome: ${lead.studentName}
 WhatsApp: ${lead.whatsapp}
 Turma: ${lead.classCode || lead.city || 'N/A'}
-Status Atual: ${STATUS_LABELS[lead.status]}${scheduleInfo}
+Status Atual: ${getStatusLabel(lead.status)}${scheduleInfo}
 Consultor Origem: ${lead.consultantName}
 Tipo de Teste: ${lead.testType === TestType.TEST_1_ACTIVE ? 'Ativo' : 'Passivo (LP)'}
 
@@ -351,23 +441,16 @@ ${historyText}
     return matchesStatus && matchesSearch && matchesLocation && matchesDate;
   });
 
-  const getStatusColor = (status: LeadStatus) => {
-    switch (status) {
-      case LeadStatus.NEW: return 'bg-blue-100 text-blue-800';
-      case LeadStatus.TODO: return 'bg-purple-100 text-purple-800';
-      case LeadStatus.CONTACTED: return 'bg-yellow-100 text-yellow-800';
-      case LeadStatus.WAITING: return 'bg-orange-100 text-orange-800';
-      case LeadStatus.SCHEDULED: return 'bg-indigo-100 text-indigo-800';
-      case LeadStatus.WON_3Y: return 'bg-emerald-100 text-emerald-800';
-      case LeadStatus.WON_LIFETIME: return 'bg-green-100 text-green-900 border border-green-200';
-      case LeadStatus.LOST: return 'bg-gray-100 text-gray-500';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+  const isLeadOverdue = (lead: Lead) => {
+    return lead.status === 'SCHEDULED' && lead.scheduledFor && lead.scheduledFor < Date.now();
   };
 
-  const isLeadOverdue = (lead: Lead) => {
-    return lead.status === LeadStatus.SCHEDULED && lead.scheduledFor && lead.scheduledFor < Date.now();
-  };
+  const COLORS_OPTIONS = ['blue', 'green', 'emerald', 'yellow', 'red', 'purple', 'indigo', 'orange', 'gray', 'pink', 'cyan'];
+  const TYPE_OPTIONS: {val: StageType, label: string}[] = [
+      {val: 'OPEN', label: 'Em Aberto (Andamento)'},
+      {val: 'WON', label: 'Ganho (Venda)'},
+      {val: 'LOST', label: 'Perdido (Sem Venda)'}
+  ];
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto relative">
@@ -531,12 +614,12 @@ ${historyText}
                     </label>
                     <select
                       value={filterStatus}
-                      onChange={(e) => setFilterStatus(e.target.value as LeadStatus | 'ALL')}
+                      onChange={(e) => setFilterStatus(e.target.value)}
                       className="block w-full rounded-md border-gray-300 border p-2 text-sm focus:ring-emerald-500 focus:border-emerald-500"
                     >
                       <option value="ALL">Todos os Status</option>
-                      {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                        <option key={key} value={key}>{label}</option>
+                      {pipelineStages.map((stage) => (
+                        <option key={stage.id} value={stage.id}>{stage.title}</option>
                       ))}
                     </select>
                   </div>
@@ -583,11 +666,12 @@ ${historyText}
 
       {viewMode === 'team' && <ConsultantManagement readOnly={isReadOnly} />}
 
-      {viewMode === 'analytics' && <Analytics leads={leads} consultants={consultants} />}
+      {viewMode === 'analytics' && <Analytics leads={leads} consultants={consultants} pipelineStages={pipelineStages} />}
       
       {viewMode === 'kanban' && (
         <KanbanBoard 
           leads={filteredLeads} 
+          pipelineStages={pipelineStages}
           onStatusChange={handleStatusChange}
           onScheduleChange={handleScheduleChange}
           isReadOnly={isReadOnly}
@@ -597,6 +681,71 @@ ${historyText}
       {/* Settings Panel */}
       {viewMode === 'settings' && !isReadOnly && (
         <div className="max-w-4xl mx-auto space-y-8">
+           
+           {/* PIPELINE CONFIG */}
+           <div className="bg-white rounded-xl shadow-lg border border-indigo-200 p-8">
+              <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+                <div className="bg-indigo-100 p-3 rounded-full text-indigo-600">
+                  <LayoutDashboard size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Configurar Funil de Vendas</h2>
+                  <p className="text-sm text-gray-500">Adicione, edite ou remova etapas. Arraste para reordenar (use as setas por enquanto).</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                  {editingStages.map((stage, index) => (
+                      <div key={stage.id} className="flex flex-col md:flex-row gap-3 items-start md:items-center bg-gray-50 p-3 rounded-lg border border-gray-200">
+                           <div className="flex flex-col gap-1 pr-2 border-r border-gray-300">
+                               <button onClick={() => handleMoveStage(index, 'up')} disabled={index === 0} className="text-gray-400 hover:text-gray-700 disabled:opacity-30"><ChevronUp size={20} /></button>
+                               <button onClick={() => handleMoveStage(index, 'down')} disabled={index === editingStages.length - 1} className="text-gray-400 hover:text-gray-700 disabled:opacity-30"><ChevronDown size={20} /></button>
+                           </div>
+
+                           <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
+                               <input 
+                                  type="text" 
+                                  value={stage.title} 
+                                  onChange={(e) => handleUpdateStage(index, 'title', e.target.value)}
+                                  className="border border-gray-300 rounded p-2 text-sm"
+                                  placeholder="Nome da Etapa"
+                               />
+                               
+                               <select 
+                                  value={stage.color}
+                                  onChange={(e) => handleUpdateStage(index, 'color', e.target.value)}
+                                  className="border border-gray-300 rounded p-2 text-sm"
+                               >
+                                   {COLORS_OPTIONS.map(c => <option key={c} value={c}>Cor: {c.toUpperCase()}</option>)}
+                               </select>
+
+                               <select 
+                                  value={stage.type}
+                                  onChange={(e) => handleUpdateStage(index, 'type', e.target.value)}
+                                  className="border border-gray-300 rounded p-2 text-sm"
+                               >
+                                   {TYPE_OPTIONS.map(t => <option key={t.val} value={t.val}>{t.label}</option>)}
+                               </select>
+                           </div>
+
+                           <button onClick={() => handleDeleteStage(index)} className="text-red-400 hover:text-red-600 p-2">
+                               <Trash2 size={18} />
+                           </button>
+                      </div>
+                  ))}
+
+                  <button onClick={handleAddStage} className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-emerald-500 hover:text-emerald-600 transition flex items-center justify-center gap-2">
+                      <PlusCircle size={20} /> Adicionar Nova Etapa
+                  </button>
+              </div>
+
+              <div className="pt-6 mt-4 border-t border-gray-100 flex justify-end">
+                  <button onClick={handleSavePipeline} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition flex items-center gap-2">
+                    <Save size={18} /> Salvar Funil
+                  </button>
+              </div>
+           </div>
+
            {/* WhatsApp Config */}
            <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-8">
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
@@ -719,8 +868,8 @@ ${historyText}
                     <div key={lead.id} className={`bg-white border rounded-lg shadow-sm hover:shadow-md transition-shadow p-4 sm:p-6 flex flex-col md:flex-row gap-4 ${overdue ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}>
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2 flex-wrap">
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(lead.status)}`}>
-                            {STATUS_LABELS[lead.status]}
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColorClass(lead.status)}`}>
+                            {getStatusLabel(lead.status)}
                           </span>
                           
                           {overdue && (
@@ -847,17 +996,17 @@ ${historyText}
                           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mudar Status</label>
                           <select
                               value={lead.status}
-                              onChange={(e) => handleStatusChange(lead, e.target.value as LeadStatus)}
+                              onChange={(e) => handleStatusChange(lead, e.target.value)}
                               className="block w-full rounded-md border-gray-300 border p-2 text-sm focus:ring-emerald-500 focus:border-emerald-500 disabled:bg-gray-50 disabled:text-gray-500"
                               disabled={isReadOnly}
                           >
-                              {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                                  <option key={key} value={key}>{label}</option>
+                              {pipelineStages.map((stage) => (
+                                  <option key={stage.id} value={stage.id}>{stage.title}</option>
                               ))}
                           </select>
 
                           {/* SCHEDULE DATE INPUT */}
-                          {lead.status === LeadStatus.SCHEDULED && (
+                          {lead.status === 'SCHEDULED' && (
                              <div className="bg-indigo-50 p-2 rounded border border-indigo-100">
                                 <label className="text-[10px] font-bold text-indigo-700 uppercase flex items-center gap-1 mb-1">
                                    <Calendar size={10} />

@@ -9,15 +9,26 @@ export enum TestType {
   TEST_2_PASSIVE = 'TEST_2_PASSIVE', // Landing Page -> Aluno chama
 }
 
+// Mantido apenas para compatibilidade de histórico, mas o sistema agora usa strings dinâmicas
 export enum LeadStatus {
-  NEW = 'NEW', // Novo cadastro
-  TODO = 'TODO', // Rafael ainda não entrou em contato
-  CONTACTED = 'CONTACTED', // Rafael fez o primeiro contato
-  WAITING = 'WAITING', // Aguardando retorno
-  SCHEDULED = 'SCHEDULED', // Retornar em data específica
-  LOST = 'LOST', // Sem interesse
-  WON_3Y = 'WON_3Y', // Comprou 3 Anos
-  WON_LIFETIME = 'WON_LIFETIME', // Comprou Vitalício
+  NEW = 'NEW',
+  TODO = 'TODO',
+  CONTACTED = 'CONTACTED',
+  WAITING = 'WAITING',
+  SCHEDULED = 'SCHEDULED',
+  LOST = 'LOST',
+  WON_3Y = 'WON_3Y',
+  WON_LIFETIME = 'WON_LIFETIME',
+}
+
+export type StageType = 'OPEN' | 'WON' | 'LOST';
+
+export interface PipelineStage {
+  id: string;
+  title: string;
+  color: string; // 'blue', 'green', 'red', 'purple', 'yellow', 'indigo', 'gray'
+  type: StageType;
+  order: number;
 }
 
 export interface HistoryItem {
@@ -33,7 +44,7 @@ export interface Lead {
   whatsapp: string;
   consultantName: string;
   testType: TestType;
-  status: LeadStatus;
+  status: string; // Changed from LeadStatus to string to support dynamic stages
   notes: string; // Consultant notes
   createdAt: number;
   
@@ -58,7 +69,8 @@ export interface Consultant {
   supervisor?: string;
 }
 
-export const STATUS_LABELS: Record<LeadStatus, string> = {
+// Deprecated: used only for fallback. UI now uses dynamic stages.
+export const STATUS_LABELS: Record<string, string> = {
   [LeadStatus.NEW]: 'Novo Cadastro',
   [LeadStatus.TODO]: 'A Fazer (Rafael)',
   [LeadStatus.CONTACTED]: 'Contatado',

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Consultant, Lead, LeadStatus, TestType } from '../types';
-import { saveLead } from '../services/crmService';
+
+import React, { useState, useEffect } from 'react';
+import { Consultant, Lead, TestType, PipelineStage } from '../types';
+import { saveLead, getPipelineStages } from '../services/crmService';
 import { v4 as uuidv4 } from 'uuid';
 import { CheckCircle, User, MessageSquare, Hash } from 'lucide-react';
 import { formatPhone } from '../utils/formHelpers';
@@ -19,6 +20,19 @@ const ConsultantView: React.FC<Props> = ({ consultant }) => {
 
   const [submitted, setSubmitted] = useState<Lead | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [defaultStageId, setDefaultStageId] = useState<string>('NEW');
+
+  useEffect(() => {
+    // Fetch the correct default stage ID from DB on mount
+    const loadStages = async () => {
+        const stages = await getPipelineStages();
+        if (stages.length > 0) {
+            // Assume the first stage in the order is the default 'New' bucket
+            setDefaultStageId(stages[0].id);
+        }
+    };
+    loadStages();
+  }, []);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPhone(e.target.value);
@@ -43,7 +57,7 @@ const ConsultantView: React.FC<Props> = ({ consultant }) => {
       notes: formData.notes,
       consultantName: consultant.name,
       testType: TestType.TEST_1_ACTIVE, // ALWAYS Test 1 for Consultants
-      status: LeadStatus.NEW,
+      status: defaultStageId,
       createdAt: Date.now(),
       // Legacy fields explicitly undefined or empty
       city: '', 
@@ -167,7 +181,7 @@ const ConsultantView: React.FC<Props> = ({ consultant }) => {
             value={formData.notes}
             onChange={(e) => setFormData({...formData, notes: e.target.value})}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 border p-2.5"
-            placeholder="Preencher apenas se tivAlguma informação importante para o Rafael?"
+            placeholder="Preencher apenas se tiver alguma informação importante para o Rafael"
           />
         </div>
 

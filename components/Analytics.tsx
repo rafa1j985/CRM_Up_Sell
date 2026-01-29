@@ -1,34 +1,46 @@
+
 import React, { useMemo } from 'react';
-import { Lead, LeadStatus, TestType, Consultant } from '../types';
+import { Lead, TestType, Consultant, PipelineStage } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Trophy, Users, TrendingUp, Award } from 'lucide-react';
 
 interface Props {
   leads: Lead[];
   consultants: Consultant[];
+  pipelineStages: PipelineStage[];
 }
 
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'];
+const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
 
-const Analytics: React.FC<Props> = ({ leads, consultants }) => {
+const Analytics: React.FC<Props> = ({ leads, consultants, pipelineStages }) => {
   
+  // Helper to determine if a status ID corresponds to a 'WON' stage
+  const isWon = (statusId: string) => {
+      const stage = pipelineStages.find(s => s.id === statusId);
+      return stage?.type === 'WON';
+  };
+
+  const isLost = (statusId: string) => {
+      const stage = pipelineStages.find(s => s.id === statusId);
+      return stage?.type === 'LOST';
+  };
+
   const stats = useMemo(() => {
     const total = leads.length;
-    const won3y = leads.filter(l => l.status === LeadStatus.WON_3Y).length;
-    const wonLife = leads.filter(l => l.status === LeadStatus.WON_LIFETIME).length;
-    const lost = leads.filter(l => l.status === LeadStatus.LOST).length;
-    const open = total - won3y - wonLife - lost;
-    const conversionRate = total > 0 ? ((won3y + wonLife) / total) * 100 : 0;
+    const won = leads.filter(l => isWon(l.status)).length;
+    const lost = leads.filter(l => isLost(l.status)).length;
+    const open = total - won - lost;
+    const conversionRate = total > 0 ? (won / total) * 100 : 0;
 
-    return { total, won3y, wonLife, lost, open, conversionRate };
-  }, [leads]);
+    return { total, won, lost, open, conversionRate };
+  }, [leads, pipelineStages]);
 
   const testTypeData = useMemo(() => {
     const t1 = leads.filter(l => l.testType === TestType.TEST_1_ACTIVE);
     const t2 = leads.filter(l => l.testType === TestType.TEST_2_PASSIVE);
 
     const getConv = (group: Lead[]) => {
-        const wins = group.filter(l => l.status === LeadStatus.WON_3Y || l.status === LeadStatus.WON_LIFETIME).length;
+        const wins = group.filter(l => isWon(l.status)).length;
         return group.length > 0 ? (wins / group.length) * 100 : 0;
     };
 
@@ -36,7 +48,7 @@ const Analytics: React.FC<Props> = ({ leads, consultants }) => {
         { name: 'Teste 1 (Ativo)', leads: t1.length, conversao: getConv(t1).toFixed(1) },
         { name: 'Teste 2 (LP)', leads: t2.length, conversao: getConv(t2).toFixed(1) },
     ];
-  }, [leads]);
+  }, [leads, pipelineStages]);
 
   // --- LOGIC FOR CONSULTANTS & TEAMS ---
   const performanceData = useMemo(() => {
@@ -70,7 +82,7 @@ const Analytics: React.FC<Props> = ({ leads, consultants }) => {
         teamMetrics[supervisor].leads++;
 
         // Increment Sales
-        if (l.status === LeadStatus.WON_3Y || l.status === LeadStatus.WON_LIFETIME) {
+        if (isWon(l.status)) {
             consultantMetrics[name].sales++;
             teamMetrics[supervisor].sales++;
         }
@@ -88,7 +100,7 @@ const Analytics: React.FC<Props> = ({ leads, consultants }) => {
     })).sort((a, b) => b.sales - a.sales);
 
     return { consultantList, teamList };
-  }, [leads, consultants]);
+  }, [leads, consultants, pipelineStages]);
 
   const topPerformers = useMemo(() => {
     const { consultantList, teamList } = performanceData;
@@ -105,11 +117,12 @@ const Analytics: React.FC<Props> = ({ leads, consultants }) => {
     return { bestSeller, bestLeadGen, bestTeam };
   }, [performanceData]);
 
+  // Generate pie data dynamically from stages, but grouping small ones if needed
+  // For simplicity, we group by Stage Type (Won, Lost, Open) + Specific Won types if we can distinguish them by title
   const pieData = [
-    { name: '3 Anos', value: stats.won3y },
-    { name: 'Vitalício', value: stats.wonLife },
-    { name: 'Perdido', value: stats.lost },
+    { name: 'Vendas (Total)', value: stats.won },
     { name: 'Em Aberto', value: stats.open },
+    { name: 'Perdidos', value: stats.lost },
   ];
 
   return (
@@ -125,12 +138,12 @@ const Analytics: React.FC<Props> = ({ leads, consultants }) => {
                 <p className="text-3xl font-bold text-emerald-600">{stats.conversionRate.toFixed(1)}%</p>
             </div>
              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                <p className="text-gray-500 text-sm font-medium">Vendas 3 Anos</p>
-                <p className="text-3xl font-bold text-blue-600">{stats.won3y}</p>
+                <p className="text-gray-500 text-sm font-medium">Vendas Totais</p>
+                <p className="text-3xl font-bold text-blue-600">{stats.won}</p>
             </div>
              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                <p className="text-gray-500 text-sm font-medium">Vendas Vitalício</p>
-                <p className="text-3xl font-bold text-purple-600">{stats.wonLife}</p>
+                <p className="text-gray-500 text-sm font-medium">Em Negociação</p>
+                <p className="text-3xl font-bold text-purple-600">{stats.open}</p>
             </div>
         </div>
 

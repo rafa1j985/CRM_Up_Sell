@@ -1,26 +1,17 @@
+
 import React, { useState } from 'react';
-import { Lead, LeadStatus, STATUS_LABELS, TestType } from '../types';
+import { Lead, TestType, PipelineStage } from '../types';
 import { Phone, User, Calendar, DollarSign, MessageSquare, Clock, AlertCircle, Hash } from 'lucide-react';
 
 interface Props {
   leads: Lead[];
-  onStatusChange: (lead: Lead, newStatus: LeadStatus) => void;
+  pipelineStages: PipelineStage[];
+  onStatusChange: (lead: Lead, newStatus: string) => void;
   onScheduleChange?: (lead: Lead, dateStr: string) => void;
   isReadOnly?: boolean;
 }
 
-const COLUMNS: { id: LeadStatus; title: string; color: string; bg: string }[] = [
-  { id: LeadStatus.NEW, title: 'Novo', color: 'border-blue-500', bg: 'bg-blue-50' },
-  { id: LeadStatus.TODO, title: 'A Fazer', color: 'border-purple-500', bg: 'bg-purple-50' },
-  { id: LeadStatus.CONTACTED, title: 'Contatado', color: 'border-yellow-500', bg: 'bg-yellow-50' },
-  { id: LeadStatus.WAITING, title: 'Aguardando', color: 'border-orange-500', bg: 'bg-orange-50' },
-  { id: LeadStatus.SCHEDULED, title: 'Agendado', color: 'border-indigo-500', bg: 'bg-indigo-50' },
-  { id: LeadStatus.WON_3Y, title: 'Venda 3 Anos', color: 'border-emerald-500', bg: 'bg-emerald-50' },
-  { id: LeadStatus.WON_LIFETIME, title: 'Venda Vitalício', color: 'border-green-600', bg: 'bg-green-100' },
-  { id: LeadStatus.LOST, title: 'Perdido', color: 'border-gray-400', bg: 'bg-gray-100' },
-];
-
-const KanbanBoard: React.FC<Props> = ({ leads, onStatusChange, onScheduleChange, isReadOnly = false }) => {
+const KanbanBoard: React.FC<Props> = ({ leads, pipelineStages, onStatusChange, onScheduleChange, isReadOnly = false }) => {
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
 
   const handleDragStart = (e: React.DragEvent, leadId: string) => {
@@ -34,13 +25,13 @@ const KanbanBoard: React.FC<Props> = ({ leads, onStatusChange, onScheduleChange,
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, targetStatus: LeadStatus) => {
+  const handleDrop = (e: React.DragEvent, targetStatusId: string) => {
     e.preventDefault();
     if (isReadOnly || !draggedLeadId) return;
 
     const lead = leads.find((l) => l.id === draggedLeadId);
-    if (lead && lead.status !== targetStatus) {
-      onStatusChange(lead, targetStatus);
+    if (lead && lead.status !== targetStatusId) {
+      onStatusChange(lead, targetStatusId);
     }
     setDraggedLeadId(null);
   };
@@ -64,25 +55,44 @@ const KanbanBoard: React.FC<Props> = ({ leads, onStatusChange, onScheduleChange,
       });
   };
 
+  // Helper to map color string to Tailwind classes
+  const getStageColorClasses = (colorName: string) => {
+      const map: Record<string, { bg: string, border: string, dot: string }> = {
+          blue: { bg: 'bg-blue-50', border: 'border-blue-500', dot: 'bg-blue-500' },
+          green: { bg: 'bg-green-50', border: 'border-green-500', dot: 'bg-green-500' },
+          emerald: { bg: 'bg-emerald-50', border: 'border-emerald-500', dot: 'bg-emerald-500' },
+          yellow: { bg: 'bg-yellow-50', border: 'border-yellow-500', dot: 'bg-yellow-500' },
+          red: { bg: 'bg-red-50', border: 'border-red-500', dot: 'bg-red-500' },
+          purple: { bg: 'bg-purple-50', border: 'border-purple-500', dot: 'bg-purple-500' },
+          indigo: { bg: 'bg-indigo-50', border: 'border-indigo-500', dot: 'bg-indigo-500' },
+          orange: { bg: 'bg-orange-50', border: 'border-orange-500', dot: 'bg-orange-500' },
+          gray: { bg: 'bg-gray-50', border: 'border-gray-500', dot: 'bg-gray-500' },
+          pink: { bg: 'bg-pink-50', border: 'border-pink-500', dot: 'bg-pink-500' },
+          cyan: { bg: 'bg-cyan-50', border: 'border-cyan-500', dot: 'bg-cyan-500' },
+      };
+      return map[colorName] || map['gray'];
+  };
+
   const now = Date.now();
 
   return (
     <div className="flex overflow-x-auto pb-4 gap-4 h-[calc(100vh-220px)] items-start">
-      {COLUMNS.map((column) => {
-        const columnLeads = leads.filter((l) => l.status === column.id);
+      {pipelineStages.map((stage) => {
+        const columnLeads = leads.filter((l) => l.status === stage.id);
+        const styles = getStageColorClasses(stage.color);
         
         return (
           <div
-            key={column.id}
-            className={`min-w-[300px] w-[300px] flex-shrink-0 rounded-xl flex flex-col max-h-full ${column.bg} border border-gray-200`}
+            key={stage.id}
+            className={`min-w-[300px] w-[300px] flex-shrink-0 rounded-xl flex flex-col max-h-full ${styles.bg} border border-gray-200`}
             onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, column.id)}
+            onDrop={(e) => handleDrop(e, stage.id)}
           >
             {/* Column Header */}
-            <div className={`p-3 border-b border-gray-200 flex justify-between items-center sticky top-0 ${column.bg} rounded-t-xl z-10`}>
+            <div className={`p-3 border-b border-gray-200 flex justify-between items-center sticky top-0 ${styles.bg} rounded-t-xl z-10`}>
               <h3 className="font-bold text-gray-700 flex items-center gap-2">
-                <span className={`w-3 h-3 rounded-full ${column.color.replace('border', 'bg')}`}></span>
-                {column.title}
+                <span className={`w-3 h-3 rounded-full ${styles.dot}`}></span>
+                {stage.title}
               </h3>
               <span className="text-xs font-semibold bg-white px-2 py-1 rounded text-gray-500 shadow-sm">
                 {columnLeads.length}
@@ -92,7 +102,7 @@ const KanbanBoard: React.FC<Props> = ({ leads, onStatusChange, onScheduleChange,
             {/* Column Content */}
             <div className="p-2 overflow-y-auto flex-1 space-y-2 custom-scrollbar">
               {columnLeads.map((lead) => {
-                const isOverdue = lead.status === LeadStatus.SCHEDULED && lead.scheduledFor && lead.scheduledFor < now;
+                const isOverdue = lead.status === 'SCHEDULED' && lead.scheduledFor && lead.scheduledFor < now;
                 const lastHistoryItem = lead.history && lead.history.length > 0 ? lead.history[0] : null;
 
                 return (
@@ -100,7 +110,7 @@ const KanbanBoard: React.FC<Props> = ({ leads, onStatusChange, onScheduleChange,
                     key={lead.id}
                     draggable={!isReadOnly}
                     onDragStart={(e) => handleDragStart(e, lead.id)}
-                    className={`bg-white p-3 rounded-lg shadow-sm border-l-4 ${column.color} hover:shadow-md transition-all cursor-grab active:cursor-grabbing relative group ${isOverdue ? 'ring-2 ring-red-400 ring-offset-1' : ''}`}
+                    className={`bg-white p-3 rounded-lg shadow-sm border-l-4 ${styles.border} hover:shadow-md transition-all cursor-grab active:cursor-grabbing relative group ${isOverdue ? 'ring-2 ring-red-400 ring-offset-1' : ''}`}
                   >
                     {isOverdue && (
                         <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 font-bold z-10">
@@ -129,7 +139,7 @@ const KanbanBoard: React.FC<Props> = ({ leads, onStatusChange, onScheduleChange,
                       </div>
                       
                       {/* SCHEDULE DISPLAY */}
-                      {lead.status === LeadStatus.SCHEDULED && (
+                      {lead.status === 'SCHEDULED' && (
                           <div className="mt-2 p-1 bg-indigo-50 border border-indigo-100 rounded">
                               {onScheduleChange && !isReadOnly ? (
                                    <input 
