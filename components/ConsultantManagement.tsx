@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Consultant } from '../types';
-import { getConsultants, saveConsultant, deleteConsultant } from '../services/crmService';
+import { getConsultants, saveConsultant, deleteConsultant, updateConsultantPassword } from '../services/crmService';
 import { v4 as uuidv4 } from 'uuid';
 import { Trash2, UserPlus, Shield, User, Key, Users } from 'lucide-react';
 
@@ -110,6 +110,15 @@ const ConsultantManagement: React.FC<Props> = ({ readOnly = false }) => {
   const handleDelete = async (id: string) => {
     if (window.confirm('Tem certeza que deseja remover este consultor? O histórico de vendas será mantido, mas o acesso será revogado.')) {
       await deleteConsultant(id);
+      await loadConsultants();
+    }
+  };
+
+  const handleChangePassword = async (id: string, name: string) => {
+    const newPass = window.prompt(`Digite a nova senha para ${name}:`);
+    if (newPass && newPass.trim() !== '') {
+      await updateConsultantPassword(id, newPass);
+      alert('Senha atualizada com sucesso!');
       await loadConsultants();
     }
   };
@@ -281,13 +290,22 @@ const ConsultantManagement: React.FC<Props> = ({ readOnly = false }) => {
                     </td>
                     {!readOnly && (
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button 
-                          onClick={() => handleDelete(consultant.id)}
-                          className="text-red-600 hover:text-red-900 transition flex items-center gap-1 ml-auto"
-                        >
-                          <Trash2 size={16} />
-                          Remover
-                        </button>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => handleChangePassword(consultant.id, consultant.name)}
+                                className="text-indigo-600 hover:text-indigo-900 transition flex items-center gap-1"
+                                title="Alterar Senha"
+                            >
+                                <Key size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleDelete(consultant.id)}
+                              className="text-red-600 hover:text-red-900 transition flex items-center gap-1"
+                              title="Excluir Usuário"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                        </div>
                       </td>
                     )}
                   </tr>

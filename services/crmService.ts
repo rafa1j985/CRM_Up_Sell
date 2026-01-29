@@ -116,6 +116,15 @@ export const saveConsultant = async (consultant: Consultant): Promise<void> => {
   if (error) console.error('Erro ao salvar consultor:', error);
 };
 
+export const updateConsultantPassword = async (id: string, newPassword: string): Promise<void> => {
+  const { error } = await supabase
+    .from('consultants')
+    .update({ password: newPassword })
+    .eq('id', id);
+  
+  if (error) console.error('Erro ao atualizar senha do consultor:', error);
+};
+
 export const deleteConsultant = async (id: string): Promise<void> => {
   const { error } = await supabase.from('consultants').delete().eq('id', id);
   if (error) console.error('Erro ao excluir consultor:', error);
