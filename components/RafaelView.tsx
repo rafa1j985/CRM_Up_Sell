@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Lead, LeadStatus, STATUS_LABELS, TestType, HistoryItem } from '../types';
-import { getLeads, updateLead, deleteLead, saveLead, getMessageTemplate, saveMessageTemplate, getAllCitiesByState, getCustomCities, addCustomCity, removeCustomCity } from '../services/crmService';
+import { Lead, LeadStatus, STATUS_LABELS, TestType, HistoryItem, Consultant } from '../types';
+import { getLeads, updateLead, deleteLead, saveLead, getMessageTemplate, saveMessageTemplate, getAllCitiesByState, getCustomCities, addCustomCity, removeCustomCity, getConsultants } from '../services/crmService';
 import { analyzeCRMData } from '../services/aiService';
 import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash } from 'lucide-react';
 import Analytics from './Analytics';
@@ -15,6 +15,7 @@ interface Props {
 
 const RafaelView: React.FC<Props> = ({ currentUser }) => {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [consultants, setConsultants] = useState<Consultant[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'analytics' | 'team' | 'register' | 'settings'>('list');
   const [filterStatus, setFilterStatus] = useState<LeadStatus | 'ALL'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -61,6 +62,10 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
 
   const loadInitialData = async () => {
     await refreshLeads();
+    // Load consultants for Analytics mapping
+    const loadedConsultants = await getConsultants();
+    setConsultants(loadedConsultants);
+    
     const tmpl = await getMessageTemplate();
     setWaTemplate(tmpl);
     await refreshCities();
@@ -578,7 +583,7 @@ ${historyText}
 
       {viewMode === 'team' && <ConsultantManagement readOnly={isReadOnly} />}
 
-      {viewMode === 'analytics' && <Analytics leads={leads} />}
+      {viewMode === 'analytics' && <Analytics leads={leads} consultants={consultants} />}
       
       {viewMode === 'kanban' && (
         <KanbanBoard 

@@ -116,7 +116,7 @@ const ConsultantView: React.FC<Props> = ({ consultant }) => {
               value={formData.studentName}
               onChange={(e) => setFormData({...formData, studentName: e.target.value})}
               className="pl-10 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 border p-2.5"
-              placeholder="Nome completo"
+              placeholder="Primeiro Nome"
             />
           </div>
         </div>
@@ -154,7 +154,7 @@ const ConsultantView: React.FC<Props> = ({ consultant }) => {
               value={formData.classCode}
               onChange={(e) => setFormData({...formData, classCode: e.target.value})}
               className="pl-10 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 border p-2.5 uppercase"
-              placeholder="Ex: T25-SP"
+              placeholder="Copia do sistema"
             />
           </div>
         </div>
@@ -167,7 +167,7 @@ const ConsultantView: React.FC<Props> = ({ consultant }) => {
             value={formData.notes}
             onChange={(e) => setFormData({...formData, notes: e.target.value})}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 border p-2.5"
-            placeholder="Alguma informação importante para o Rafael?"
+            placeholder="Preencher apenas se tivAlguma informação importante para o Rafael?"
           />
         </div>
 
