@@ -1,9 +1,18 @@
 import { GoogleGenAI } from "@google/genai";
 import { Lead, LeadStatus, TestType } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// --- CONFIGURAÇÃO DA IA ---
+// Como o site é estático, cole sua chave aqui entre as aspas.
+// Exemplo: const API_KEY = 'AIzaSyD...';
+const API_KEY = 'COLE_SUA_CHAVE_GEMINI_AQUI';
+
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 export const analyzeCRMData = async (leads: Lead[]): Promise<string> => {
+  if (API_KEY === 'COLE_SUA_CHAVE_GEMINI_AQUI' || !API_KEY) {
+    return "⚠️ Configuração Pendente: Por favor, adicione sua chave API do Google Gemini no arquivo 'services/aiService.ts' para habilitar a IA.";
+  }
+
   try {
     // 1. Prepare data for the AI (simplify to reduce token usage and focus on relevant info)
     const simplifiedLeads = leads.map(l => ({
@@ -39,7 +48,7 @@ export const analyzeCRMData = async (leads: Lead[]): Promise<string> => {
 
     // 3. Call Gemini
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash-lite-preview-02-05',
       contents: prompt,
     });
 
@@ -47,6 +56,6 @@ export const analyzeCRMData = async (leads: Lead[]): Promise<string> => {
 
   } catch (error) {
     console.error("Erro ao analisar dados com IA:", error);
-    return "Erro ao conectar com a inteligência artificial. Verifique sua chave de API.";
+    return "Erro ao conectar com a inteligência artificial. Verifique se a chave de API está correta e se o modelo 'gemini-2.0-flash-lite-preview-02-05' está disponível.";
   }
 };
