@@ -169,6 +169,7 @@ export const authenticateManager = (username: string, password: string): string 
   if (username === 'corat' && password === 'corat') return 'Corat';
   if (username === 'brunaramalho' && password === 'brunaramalho') return 'Bruna Ramalho';
   if (username === 'isabela' && password === 'isabela') return 'Isabela';
+  if (username === 'geici' && password === 'geici') return 'Geici';
   return null;
 };
 

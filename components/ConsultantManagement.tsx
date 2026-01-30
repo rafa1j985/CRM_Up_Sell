@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Consultant } from '../types';
 import { getConsultants, saveConsultant, deleteConsultant, updateConsultantPassword } from '../services/crmService';
@@ -8,7 +9,7 @@ interface Props {
   readOnly?: boolean;
 }
 
-const SUPERVISORS = ['Bruna', 'Cristiane', 'Isabela'];
+const SUPERVISORS = ['Bruna', 'Cristiane', 'Isabela', 'Geici'];
 
 const ConsultantManagement: React.FC<Props> = ({ readOnly = false }) => {
   const [consultants, setConsultants] = useState<Consultant[]>([]);
