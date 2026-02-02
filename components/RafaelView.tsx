@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Lead, TestType, HistoryItem, Consultant, PipelineStage, StageType } from '../types';
 import { getLeads, updateLead, deleteLead, saveLead, getMessageTemplate, saveMessageTemplate, getAllCitiesByState, getCustomCities, addCustomCity, removeCustomCity, getConsultants, getPipelineStages, savePipelineStages, supabase } from '../services/crmService';
 import { analyzeCRMData } from '../services/aiService';
-import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash, GripVertical, ChevronUp, ChevronDown, Bell } from 'lucide-react';
+import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash, GripVertical, ChevronUp, ChevronDown, Bell, Volume2, VolumeX } from 'lucide-react';
 import Analytics from './Analytics';
 import ConsultantManagement from './ConsultantManagement';
 import KanbanBoard from './KanbanBoard';
@@ -14,8 +14,8 @@ interface Props {
   currentUser: string; // 'Rafael' or 'Corat' or 'Bruna Ramalho' or 'Isabela'
 }
 
-// Base64 notification sound (short pleasant chime)
-const NOTIFICATION_SOUND = "data:audio/mp3;base64,//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+// Som hospedado confiável (curto e agradável)
+const NOTIFICATION_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3";
 
 const RafaelView: React.FC<Props> = ({ currentUser }) => {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -57,22 +57,21 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState<string | null>(null);
 
-  // Notifications
+  // Notifications State
   const [notification, setNotification] = useState<{show: boolean, message: string} | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // READ ONLY MODE CHECK (Supervisors)
   const isReadOnly = currentUser === 'Bruna Ramalho' || currentUser === 'Isabela';
 
   useEffect(() => {
-    // Initialize Audio
-    audioRef.current = new Audio(NOTIFICATION_SOUND);
-    audioRef.current.volume = 0.5;
-
     loadInitialData();
     
     // Auto-refresh every minute (fallback)
     const interval = setInterval(refreshLeads, 60000);
+
+    console.log("Iniciando escuta Realtime do Supabase...");
 
     // --- REALTIME SUBSCRIPTION ---
     const channel = supabase
@@ -85,11 +84,13 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
           table: 'leads',
         },
         (payload) => {
-          console.log('Novo lead detectado via Realtime:', payload);
+          console.log('🔔 EVENTO REALTIME RECEBIDO:', payload);
           handleNewLeadNotification(payload.new);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Status da Conexão Realtime:", status);
+      });
 
     return () => {
       clearInterval(interval);
@@ -97,10 +98,34 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     };
   }, []);
 
+  const toggleSound = () => {
+    if (!audioRef.current) return;
+    
+    if (!soundEnabled) {
+      // Tentar tocar para desbloquear o áudio do navegador
+      audioRef.current.play()
+        .then(() => {
+          setSoundEnabled(true);
+          // Toca um feedback visual rápido
+          setNotification({ show: true, message: "Som ativado! Você ouvirá quando chegar um lead." });
+          setTimeout(() => setNotification(null), 3000);
+        })
+        .catch(e => {
+          console.error("Erro ao ativar som:", e);
+          alert("O navegador bloqueou o som. Tente clicar novamente.");
+        });
+    } else {
+      setSoundEnabled(false);
+    }
+  };
+
   const handleNewLeadNotification = (newLead: any) => {
+    console.log("Processando notificação para:", newLead.student_name);
+
     // 1. Play Sound
-    if (audioRef.current) {
-      audioRef.current.play().catch(e => console.log("Audio play blocked (needs user interaction first):", e));
+    if (audioRef.current && soundEnabled) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(e => console.warn("Áudio bloqueado pelo navegador:", e));
     }
 
     // 2. Show Toast
@@ -109,19 +134,18 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
       message: `Novo Lead: ${newLead.student_name} (Turma: ${newLead.class_code || 'N/A'})`
     });
 
-    // 3. Auto-hide toast after 5s
+    // 3. Auto-hide toast after 8s
     setTimeout(() => {
       setNotification(null);
-    }, 5000);
+    }, 8000);
 
-    // 4. Refresh List
+    // 4. Refresh List immediately
     refreshLeads();
   };
 
   const loadInitialData = async () => {
     await refreshLeads();
     await refreshPipeline();
-    // Load consultants for Analytics mapping
     const loadedConsultants = await getConsultants();
     setConsultants(loadedConsultants);
     
@@ -134,14 +158,10 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     const data = await getLeads();
     const now = Date.now();
     const loadedLeads = data.sort((a, b) => {
-      // Priority 1: Overdue Scheduled items
       const aOverdue = a.scheduledFor && a.scheduledFor < now && a.status === 'SCHEDULED';
       const bOverdue = b.scheduledFor && b.scheduledFor < now && b.status === 'SCHEDULED';
-      
       if (aOverdue && !bOverdue) return -1;
       if (!aOverdue && bOverdue) return 1;
-
-      // Priority 2: Creation Date (Newest first)
       return b.createdAt - a.createdAt;
     });
     setLeads(loadedLeads);
@@ -155,16 +175,14 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
   const refreshPipeline = async () => {
     const stages = await getPipelineStages();
     setPipelineStages(stages);
-    setEditingStages(JSON.parse(JSON.stringify(stages))); // Copy for editing
+    setEditingStages(JSON.parse(JSON.stringify(stages))); 
   };
 
-  // Compute unique locations (Class Code OR Legacy City) for the filter dropdown
   const availableLocations = useMemo(() => {
     const locations = new Set(leads.map(l => l.classCode || l.city || 'N/A'));
     return Array.from(locations).sort();
   }, [leads]);
 
-  // Helper to get Label
   const getStatusLabel = (statusId: string) => {
     const stage = pipelineStages.find(s => s.id === statusId);
     return stage ? stage.title : statusId;
@@ -173,8 +191,6 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
   const getStatusColorClass = (statusId: string) => {
       const stage = pipelineStages.find(s => s.id === statusId);
       if (!stage) return 'bg-gray-100 text-gray-800';
-      
-      // Map simple color names to tailwind classes
       const colors: Record<string, string> = {
           blue: 'bg-blue-100 text-blue-800 border-blue-200',
           green: 'bg-green-100 text-green-800 border-green-200',
@@ -188,33 +204,25 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
           pink: 'bg-pink-100 text-pink-800 border-pink-200',
           cyan: 'bg-cyan-100 text-cyan-800 border-cyan-200'
       };
-      
       return colors[stage.color] || colors['gray'];
   };
 
   const handleStatusChange = async (lead: Lead, newStatus: string) => {
     if (isReadOnly) return;
-    
-    // If changing to SCHEDULED, initialize scheduledFor if empty
     let newScheduledFor = lead.scheduledFor;
     if (newStatus === 'SCHEDULED' && !newScheduledFor) {
-        // Default to tomorrow 09:00
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         tomorrow.setHours(9, 0, 0, 0);
         newScheduledFor = tomorrow.getTime();
     }
-
     const updated = { 
       ...lead, 
       status: newStatus,
       scheduledFor: newScheduledFor,
       lastUpdatedBy: currentUser
     };
-    
-    // Optimistic update
     setLeads(prev => prev.map(l => l.id === lead.id ? updated : l));
-    
     await updateLead(updated);
     refreshLeads();
   };
@@ -223,9 +231,7 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     if (isReadOnly) return;
     const timestamp = dateStr ? new Date(dateStr).getTime() : null;
     const updated = { ...lead, scheduledFor: timestamp, lastUpdatedBy: currentUser };
-    
     setLeads(prev => prev.map(l => l.id === lead.id ? updated : l));
-    
     await updateLead(updated);
     refreshLeads();
   };
@@ -267,7 +273,6 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
   };
 
   const handleSavePipeline = async () => {
-      // Re-index order just in case
       const ordered = editingStages.map((s, idx) => ({ ...s, order: idx }));
       await savePipelineStages(ordered);
       await refreshPipeline();
@@ -275,7 +280,6 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
   };
 
   // --- HISTORY / TIMELINE LOGIC ---
-
   const handleNoteInputChange = (id: string, value: string) => {
     setNoteInputs(prev => ({ ...prev, [id]: value }));
   };
@@ -293,16 +297,12 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     };
 
     const updatedHistory = lead.history ? [newHistoryItem, ...lead.history] : [newHistoryItem];
-
     const updatedLead = {
       ...lead,
       history: updatedHistory,
       lastUpdatedBy: currentUser
     };
-
     await updateLead(updatedLead);
-    
-    // Clear input
     setNoteInputs(prev => ({ ...prev, [lead.id]: '' }));
     refreshLeads();
   };
@@ -323,14 +323,11 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
-
     if (manualForm.whatsapp.length < 15) {
         alert("Por favor, preencha o WhatsApp corretamente no formato (XX) XXXXX-XXXX");
         return;
     }
-
     const defaultStage = pipelineStages.length > 0 ? pipelineStages[0].id : 'NEW';
-
     const newLead: Lead = {
       id: uuidv4(),
       ...manualForm,
@@ -345,9 +342,6 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     };
     await saveLead(newLead);
     setManualForm({ studentName: '', whatsapp: '', classCode: '', notes: '' });
-    
-    // Wait slightly to let realtime trigger first or manual refresh
-    // Note: manual submit also triggers realtime event for everyone else, and for self depending on supabase config
     setTimeout(() => {
         refreshLeads();
         setViewMode('list');
@@ -380,12 +374,10 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
   };
 
   // --- COPY FUNCTIONS ---
-
   const formatLeadHistory = (lead: Lead) => {
     const scheduleInfo = lead.status === 'SCHEDULED' && lead.scheduledFor 
       ? `\nAgendado para: ${new Date(lead.scheduledFor).toLocaleString()}` 
       : '';
-
     let historyText = '';
     if (lead.history && lead.history.length > 0) {
         historyText = lead.history.map(h => 
@@ -394,7 +386,6 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     } else {
         historyText = lead.managerNotes ? `(Legado): ${lead.managerNotes}` : 'Nenhuma interação registrada.';
     }
-
     return `
 === HISTÓRICO DO CLIENTE ===
 Nome: ${lead.studentName}
@@ -430,7 +421,6 @@ ${historyText}
   };
 
   // --- AI ANALYSIS ---
-  
   const handleRunAI = async () => {
     if (leads.length === 0) {
       alert("Não há dados suficientes para análise.");
@@ -446,16 +436,12 @@ ${historyText}
   const generateWhatsAppLink = (lead: Lead) => {
     const cleanNumber = lead.whatsapp.replace(/\D/g, '');
     let message = waTemplate;
-    
-    // Replace variables
     message = message.replace(/{cliente}/g, lead.studentName);
     message = message.replace(/{consultor}/g, lead.consultantName);
     message = message.replace(/{cidade}/g, lead.classCode || lead.city || 'sua cidade');
-
     return `https://wa.me/55${cleanNumber}?text=${encodeURIComponent(message)}`;
   };
 
-  // Helper for input type=datetime-local
   const timestampToInput = (ts?: number | null) => {
     if (!ts) return '';
     const date = new Date(ts);
@@ -464,23 +450,15 @@ ${historyText}
   };
 
   const filteredLeads = leads.filter(lead => {
-    // 1. View Mode / Status Filter
     const matchesStatus = viewMode === 'kanban' ? true : (filterStatus === 'ALL' || lead.status === filterStatus);
-    
-    // 2. Search Text
     const matchesSearch = lead.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           lead.consultantName.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // 3. Location Filter
     const matchesLocation = locationFilter === 'ALL' || 
                             (lead.classCode === locationFilter) || 
                             (lead.city === locationFilter);
-
-    // 4. Date Filter
     let matchesDate = true;
     const leadDate = new Date(lead.createdAt);
     const now = new Date();
-
     if (dateFilter === 'TODAY') {
       matchesDate = leadDate.toDateString() === now.toDateString();
     } else if (dateFilter === 'LAST_7') {
@@ -490,7 +468,6 @@ ${historyText}
     } else if (dateFilter === 'THIS_MONTH') {
       matchesDate = leadDate.getMonth() === now.getMonth() && leadDate.getFullYear() === now.getFullYear();
     }
-
     return matchesStatus && matchesSearch && matchesLocation && matchesDate;
   });
 
@@ -508,19 +485,22 @@ ${historyText}
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto relative">
       
-      {/* NOTIFICATION TOAST */}
+      {/* HIDDEN AUDIO ELEMENT */}
+      <audio ref={audioRef} src={NOTIFICATION_SOUND_URL} preload="auto" />
+
+      {/* NOTIFICATION TOAST (FIXED Z-INDEX) */}
       {notification && notification.show && (
-        <div className="fixed top-20 right-4 z-50 animate-in slide-in-from-right fade-in duration-300">
-           <div className="bg-emerald-600 text-white px-6 py-4 rounded-lg shadow-xl flex items-center gap-3 border-2 border-emerald-400">
+        <div className="fixed top-4 right-4 z-[9999] animate-in slide-in-from-right fade-in duration-300 max-w-sm w-full">
+           <div className="bg-emerald-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 border-2 border-white ring-4 ring-emerald-200">
              <div className="bg-white/20 p-2 rounded-full">
                <Bell size={24} className="animate-pulse" />
              </div>
-             <div>
-               <h4 className="font-bold text-sm uppercase tracking-wide">Nova Oportunidade!</h4>
-               <p className="font-medium text-white/90">{notification.message}</p>
+             <div className="flex-1">
+               <h4 className="font-bold text-sm uppercase tracking-wide mb-1">Nova Oportunidade!</h4>
+               <p className="font-medium text-white/95 text-sm">{notification.message}</p>
              </div>
-             <button onClick={() => setNotification(null)} className="ml-4 text-white/70 hover:text-white">
-                <X size={18} />
+             <button onClick={() => setNotification(null)} className="ml-2 text-white/70 hover:text-white">
+                <X size={20} />
              </button>
            </div>
         </div>
@@ -528,7 +508,7 @@ ${historyText}
 
       {/* AI Modal Result */}
       {aiResult && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-[9000] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
             <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-indigo-600 to-purple-600 rounded-t-xl text-white">
               <h2 className="text-xl font-bold flex items-center gap-2">
@@ -571,6 +551,17 @@ ${historyText}
         </div>
         
         <div className="flex flex-wrap gap-2">
+           
+           {/* SOUND TOGGLE BUTTON */}
+           <button
+             onClick={toggleSound}
+             className={`px-4 py-2 rounded-md flex items-center gap-2 text-sm font-bold transition border shadow-sm ${soundEnabled ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' : 'bg-gray-100 text-gray-500 border-gray-300 hover:bg-gray-200'}`}
+             title={soundEnabled ? "Som Ativado" : "Clique para ativar som de notificação"}
+           >
+             {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+             {soundEnabled ? 'Som Ligado' : 'Ativar Som'}
+           </button>
+
            {/* Global Actions */}
            <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm mr-2">
              <button
