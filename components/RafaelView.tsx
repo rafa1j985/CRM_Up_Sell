@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Lead, TestType, HistoryItem, Consultant, PipelineStage, StageType } from '../types';
-import { getLeads, updateLead, deleteLead, saveLead, getMessageTemplate, saveMessageTemplate, getAllCitiesByState, getCustomCities, addCustomCity, removeCustomCity, getConsultants, getPipelineStages, savePipelineStages } from '../services/crmService';
+import { getLeads, updateLead, deleteLead, saveLead, getMessageTemplate, saveMessageTemplate, getAllCitiesByState, getCustomCities, addCustomCity, removeCustomCity, getConsultants, getPipelineStages, savePipelineStages, supabase } from '../services/crmService';
 import { analyzeCRMData } from '../services/aiService';
-import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash, GripVertical, ChevronUp, ChevronDown, Bell } from 'lucide-react';
 import Analytics from './Analytics';
 import ConsultantManagement from './ConsultantManagement';
 import KanbanBoard from './KanbanBoard';
@@ -13,6 +13,9 @@ import { formatPhone, STATES } from '../utils/formHelpers';
 interface Props {
   currentUser: string; // 'Rafael' or 'Corat' or 'Bruna Ramalho' or 'Isabela'
 }
+
+// Base64 notification sound (short pleasant chime)
+const NOTIFICATION_SOUND = "data:audio/mp3;base64,//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
 
 const RafaelView: React.FC<Props> = ({ currentUser }) => {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -54,16 +57,66 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState<string | null>(null);
 
+  // Notifications
+  const [notification, setNotification] = useState<{show: boolean, message: string} | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   // READ ONLY MODE CHECK (Supervisors)
   const isReadOnly = currentUser === 'Bruna Ramalho' || currentUser === 'Isabela';
 
   useEffect(() => {
+    // Initialize Audio
+    audioRef.current = new Audio(NOTIFICATION_SOUND);
+    audioRef.current.volume = 0.5;
+
     loadInitialData();
     
-    // Auto-refresh every minute to check for overdue items
+    // Auto-refresh every minute (fallback)
     const interval = setInterval(refreshLeads, 60000);
-    return () => clearInterval(interval);
+
+    // --- REALTIME SUBSCRIPTION ---
+    const channel = supabase
+      .channel('table-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'leads',
+        },
+        (payload) => {
+          console.log('Novo lead detectado via Realtime:', payload);
+          handleNewLeadNotification(payload.new);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, []);
+
+  const handleNewLeadNotification = (newLead: any) => {
+    // 1. Play Sound
+    if (audioRef.current) {
+      audioRef.current.play().catch(e => console.log("Audio play blocked (needs user interaction first):", e));
+    }
+
+    // 2. Show Toast
+    setNotification({
+      show: true,
+      message: `Novo Lead: ${newLead.student_name} (Turma: ${newLead.class_code || 'N/A'})`
+    });
+
+    // 3. Auto-hide toast after 5s
+    setTimeout(() => {
+      setNotification(null);
+    }, 5000);
+
+    // 4. Refresh List
+    refreshLeads();
+  };
 
   const loadInitialData = async () => {
     await refreshLeads();
@@ -82,10 +135,6 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     const now = Date.now();
     const loadedLeads = data.sort((a, b) => {
       // Priority 1: Overdue Scheduled items
-      // Check if status is "SCHEDULED" type... simple check for ID containing SCHEDULED or relying on type map later
-      // For legacy consistency we check ID 'SCHEDULED', but technically any stage can have a date.
-      // We will assume only the stage with ID 'SCHEDULED' or type 'OPEN' + date implies schedule logic
-      
       const aOverdue = a.scheduledFor && a.scheduledFor < now && a.status === 'SCHEDULED';
       const bOverdue = b.scheduledFor && b.scheduledFor < now && b.status === 'SCHEDULED';
       
@@ -296,9 +345,13 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     };
     await saveLead(newLead);
     setManualForm({ studentName: '', whatsapp: '', classCode: '', notes: '' });
-    alert('Lead da Landing Page cadastrado com sucesso!');
-    refreshLeads();
-    setViewMode('list');
+    
+    // Wait slightly to let realtime trigger first or manual refresh
+    // Note: manual submit also triggers realtime event for everyone else, and for self depending on supabase config
+    setTimeout(() => {
+        refreshLeads();
+        setViewMode('list');
+    }, 500);
   };
 
   const handleSaveTemplate = async () => {
@@ -455,6 +508,24 @@ ${historyText}
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto relative">
       
+      {/* NOTIFICATION TOAST */}
+      {notification && notification.show && (
+        <div className="fixed top-20 right-4 z-50 animate-in slide-in-from-right fade-in duration-300">
+           <div className="bg-emerald-600 text-white px-6 py-4 rounded-lg shadow-xl flex items-center gap-3 border-2 border-emerald-400">
+             <div className="bg-white/20 p-2 rounded-full">
+               <Bell size={24} className="animate-pulse" />
+             </div>
+             <div>
+               <h4 className="font-bold text-sm uppercase tracking-wide">Nova Oportunidade!</h4>
+               <p className="font-medium text-white/90">{notification.message}</p>
+             </div>
+             <button onClick={() => setNotification(null)} className="ml-4 text-white/70 hover:text-white">
+                <X size={18} />
+             </button>
+           </div>
+        </div>
+      )}
+
       {/* AI Modal Result */}
       {aiResult && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">

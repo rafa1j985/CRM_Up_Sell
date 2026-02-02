@@ -7,7 +7,8 @@ import { CITIES_BY_STATE } from '../utils/formHelpers';
 const SUPABASE_URL = 'https://qayvuzxspuikrtdhabhx.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFheXZ1enhzcHVpa3J0ZGhhYmh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3MDc4MDcsImV4cCI6MjA4NTI4MzgwN30.QtiD9Oj8xS3yBfYAdmPuwWAff0703dLvpxctKZWzRFI';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Exportando a instância para uso em Realtime subscriptions nos componentes
+export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DEFAULT_TEMPLATE = `Bom dia, {cliente}! Aqui é o Rafael Juliano da VOLL. A {consultor} me falou de você! Que de tudo certo no seu curso em {cidade}!
 Eu posso te mandar um audio ou te ligar para falar da ação que fazemos em fevereiro? O que você prefere? Ligação ou audio?`;
