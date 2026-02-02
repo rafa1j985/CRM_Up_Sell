@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Lead, TestType, HistoryItem, Consultant, PipelineStage, StageType } from '../types';
 import { getLeads, updateLead, deleteLead, saveLead, getMessageTemplate, saveMessageTemplate, getAllCitiesByState, getCustomCities, addCustomCity, removeCustomCity, getConsultants, getPipelineStages, savePipelineStages, supabase } from '../services/crmService';
 import { analyzeCRMData } from '../services/aiService';
-import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash, GripVertical, ChevronUp, ChevronDown, Bell, Volume2, VolumeX } from 'lucide-react';
+import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash, GripVertical, ChevronUp, ChevronDown, Bell, Volume2, VolumeX, PlayCircle } from 'lucide-react';
 import Analytics from './Analytics';
 import ConsultantManagement from './ConsultantManagement';
 import KanbanBoard from './KanbanBoard';
@@ -14,7 +14,7 @@ interface Props {
   currentUser: string; // 'Rafael' or 'Corat' or 'Bruna Ramalho' or 'Isabela'
 }
 
-// Som hospedado confiável (curto e agradável)
+// Som hospedado confiável
 const NOTIFICATION_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3";
 
 const RafaelView: React.FC<Props> = ({ currentUser }) => {
@@ -71,7 +71,7 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     // Auto-refresh every minute (fallback)
     const interval = setInterval(refreshLeads, 60000);
 
-    console.log("Iniciando escuta Realtime do Supabase...");
+    console.log("Iniciando conexão Realtime com Supabase...");
 
     // --- REALTIME SUBSCRIPTION ---
     const channel = supabase
@@ -84,12 +84,12 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
           table: 'leads',
         },
         (payload) => {
-          console.log('🔔 EVENTO REALTIME RECEBIDO:', payload);
+          console.log('🔥 REALTIME: NOVO LEAD DETECTADO!', payload);
           handleNewLeadNotification(payload.new);
         }
       )
-      .subscribe((status) => {
-        console.log("Status da Conexão Realtime:", status);
+      .subscribe((status, err) => {
+        console.log(`STATUS REALTIME: ${status}`, err);
       });
 
     return () => {
@@ -98,34 +98,52 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
     };
   }, []);
 
-  const toggleSound = () => {
+  // Helper para tocar som
+  const playNotificationSound = () => {
     if (!audioRef.current) return;
     
-    if (!soundEnabled) {
-      // Tentar tocar para desbloquear o áudio do navegador
-      audioRef.current.play()
+    const playPromise = audioRef.current.play();
+    
+    if (playPromise !== undefined) {
+      playPromise
         .then(() => {
-          setSoundEnabled(true);
-          // Toca um feedback visual rápido
-          setNotification({ show: true, message: "Som ativado! Você ouvirá quando chegar um lead." });
-          setTimeout(() => setNotification(null), 3000);
+          console.log("Som tocado com sucesso.");
         })
-        .catch(e => {
-          console.error("Erro ao ativar som:", e);
-          alert("O navegador bloqueou o som. Tente clicar novamente.");
+        .catch(error => {
+          console.error("Autoplay bloqueado pelo navegador:", error);
+          setNotification({ 
+            show: true, 
+            message: "Novo Lead (O som foi bloqueado pelo navegador. Clique em 'Ativar Som' no topo)" 
+          });
         });
+    }
+  };
+
+  const toggleSound = () => {
+    if (!soundEnabled) {
+      setSoundEnabled(true);
+      playNotificationSound(); // Toca uma vez para testar/desbloquear
     } else {
       setSoundEnabled(false);
     }
   };
 
-  const handleNewLeadNotification = (newLead: any) => {
-    console.log("Processando notificação para:", newLead.student_name);
+  const handleTestNotification = () => {
+    const dummyLead = {
+      student_name: "Aluno Teste (Simulação)",
+      class_code: "TESTE-123"
+    };
+    handleNewLeadNotification(dummyLead);
+  };
 
-    // 1. Play Sound
-    if (audioRef.current && soundEnabled) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(e => console.warn("Áudio bloqueado pelo navegador:", e));
+  const handleNewLeadNotification = (newLead: any) => {
+    console.log("Disparando notificação visual/sonora...");
+
+    // 1. Play Sound (se habilitado ou se for teste forçado)
+    if (audioRef.current) {
+        // Reset time to allow rapid replays
+        audioRef.current.currentTime = 0;
+        playNotificationSound();
     }
 
     // 2. Show Toast
@@ -490,7 +508,7 @@ ${historyText}
 
       {/* NOTIFICATION TOAST (FIXED Z-INDEX) */}
       {notification && notification.show && (
-        <div className="fixed top-4 right-4 z-[9999] animate-in slide-in-from-right fade-in duration-300 max-w-sm w-full">
+        <div className="fixed top-4 right-4 z-[9999] animate-in slide-in-from-right fade-in duration-300 max-w-sm w-full cursor-pointer" onClick={() => setNotification(null)}>
            <div className="bg-emerald-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 border-2 border-white ring-4 ring-emerald-200">
              <div className="bg-white/20 p-2 rounded-full">
                <Bell size={24} className="animate-pulse" />
@@ -499,7 +517,7 @@ ${historyText}
                <h4 className="font-bold text-sm uppercase tracking-wide mb-1">Nova Oportunidade!</h4>
                <p className="font-medium text-white/95 text-sm">{notification.message}</p>
              </div>
-             <button onClick={() => setNotification(null)} className="ml-2 text-white/70 hover:text-white">
+             <button onClick={(e) => {e.stopPropagation(); setNotification(null)}} className="ml-2 text-white/70 hover:text-white">
                 <X size={20} />
              </button>
            </div>
@@ -552,15 +570,25 @@ ${historyText}
         
         <div className="flex flex-wrap gap-2">
            
-           {/* SOUND TOGGLE BUTTON */}
-           <button
-             onClick={toggleSound}
-             className={`px-4 py-2 rounded-md flex items-center gap-2 text-sm font-bold transition border shadow-sm ${soundEnabled ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' : 'bg-gray-100 text-gray-500 border-gray-300 hover:bg-gray-200'}`}
-             title={soundEnabled ? "Som Ativado" : "Clique para ativar som de notificação"}
-           >
-             {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
-             {soundEnabled ? 'Som Ligado' : 'Ativar Som'}
-           </button>
+           {/* TEST & SOUND BUTTONS */}
+           <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm mr-2">
+             <button
+                onClick={handleTestNotification}
+                className="px-3 py-2 rounded-l-md flex items-center gap-2 text-sm font-bold text-gray-700 hover:bg-gray-100 border-r border-gray-200"
+                title="Simular um lead chegando para testar o som"
+             >
+                <PlayCircle size={16} />
+                Testar Alerta
+             </button>
+             <button
+               onClick={toggleSound}
+               className={`px-3 py-2 rounded-r-md flex items-center gap-2 text-sm font-bold transition ${soundEnabled ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-gray-50 text-gray-500 hover:bg-gray-200'}`}
+               title={soundEnabled ? "Som Ativado" : "Clique para ativar som de notificação"}
+             >
+               {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+               {soundEnabled ? 'ON' : 'OFF'}
+             </button>
+           </div>
 
            {/* Global Actions */}
            <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm mr-2">
