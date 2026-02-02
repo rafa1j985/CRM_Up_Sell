@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Lead, TestType, HistoryItem, Consultant, PipelineStage, StageType } from '../types';
 import { getLeads, updateLead, deleteLead, saveLead, getMessageTemplate, saveMessageTemplate, getAllCitiesByState, getCustomCities, addCustomCity, removeCustomCity, getConsultants, getPipelineStages, savePipelineStages, supabase } from '../services/crmService';
 import { analyzeCRMData } from '../services/aiService';
-import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash, GripVertical, ChevronUp, ChevronDown, Bell, Volume2, VolumeX, PlayCircle } from 'lucide-react';
+import { Search, Phone, Filter, BarChart2, List, Trash2, Users, PlusCircle, User, MessageSquare, MapPin, Save, Settings, Copy, ClipboardCopy, Sparkles, X, Shield, LayoutDashboard, Calendar, AlertCircle, Send, History, SlidersHorizontal, Hash, GripVertical, ChevronUp, ChevronDown, Bell, Volume2, VolumeX, PlayCircle, Globe, Smartphone, Monitor } from 'lucide-react';
 import Analytics from './Analytics';
 import ConsultantManagement from './ConsultantManagement';
 import KanbanBoard from './KanbanBoard';
@@ -32,6 +32,9 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
 
   // WhatsApp Template State
   const [waTemplate, setWaTemplate] = useState('');
+
+  // WhatsApp Link Mode (App vs Web)
+  const [useWebWhatsapp, setUseWebWhatsapp] = useState(false);
 
   // Cities Management State
   const [customCities, setCustomCities] = useState<{state: string, name: string}[]>([]);
@@ -489,7 +492,15 @@ ${historyText}
     message = message.replace(/{cliente}/g, lead.studentName);
     message = message.replace(/{consultor}/g, lead.consultantName);
     message = message.replace(/{cidade}/g, lead.classCode || lead.city || 'sua cidade');
-    return `https://wa.me/55${cleanNumber}?text=${encodeURIComponent(message)}`;
+    
+    const encodedMessage = encodeURIComponent(message);
+    
+    // LOGIC SWITCH: App vs Web
+    if (useWebWhatsapp) {
+      return `https://web.whatsapp.com/send?phone=55${cleanNumber}&text=${encodedMessage}`;
+    }
+    
+    return `https://wa.me/55${cleanNumber}?text=${encodedMessage}`;
   };
 
   const timestampToInput = (ts?: number | null) => {
@@ -607,15 +618,25 @@ ${historyText}
         
         <div className="flex flex-wrap gap-2">
            
-           {/* TEST & SOUND BUTTONS */}
-           <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm mr-2">
+           {/* WA MODE & SOUND BUTTONS */}
+           <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm mr-2 items-center">
+             
+             {/* WEB WHATSAPP TOGGLE */}
+             <button
+                onClick={() => setUseWebWhatsapp(!useWebWhatsapp)}
+                className={`px-3 py-2 rounded-l-md flex items-center gap-2 text-sm font-bold border-r border-gray-200 transition ${useWebWhatsapp ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                title={useWebWhatsapp ? "Usando WhatsApp WEB (Safari)" : "Usando App Nativo (Mac)"}
+             >
+                {useWebWhatsapp ? <Monitor size={16} /> : <Smartphone size={16} />}
+                {useWebWhatsapp ? 'Modo Web' : 'Modo App'}
+             </button>
+
              <button
                 onClick={handleTestNotification}
-                className="px-3 py-2 rounded-l-md flex items-center gap-2 text-sm font-bold text-gray-700 hover:bg-gray-100 border-r border-gray-200"
+                className="px-3 py-2 flex items-center gap-2 text-sm font-bold text-gray-700 hover:bg-gray-100 border-r border-gray-200"
                 title="Simular um lead chegando para testar o som"
              >
                 <PlayCircle size={16} />
-                Testar Alerta
              </button>
              <button
                onClick={() => {
@@ -805,6 +826,7 @@ ${historyText}
           onStatusChange={handleStatusChange}
           onScheduleChange={handleScheduleChange}
           isReadOnly={isReadOnly}
+          useWebWhatsapp={useWebWhatsapp}
         />
       )}
 

@@ -9,9 +9,10 @@ interface Props {
   onStatusChange: (lead: Lead, newStatus: string) => void;
   onScheduleChange?: (lead: Lead, dateStr: string) => void;
   isReadOnly?: boolean;
+  useWebWhatsapp?: boolean;
 }
 
-const KanbanBoard: React.FC<Props> = ({ leads, pipelineStages, onStatusChange, onScheduleChange, isReadOnly = false }) => {
+const KanbanBoard: React.FC<Props> = ({ leads, pipelineStages, onStatusChange, onScheduleChange, isReadOnly = false, useWebWhatsapp = false }) => {
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
 
   const handleDragStart = (e: React.DragEvent, leadId: string) => {
@@ -38,6 +39,9 @@ const KanbanBoard: React.FC<Props> = ({ leads, pipelineStages, onStatusChange, o
 
   const generateWhatsAppLink = (lead: Lead) => {
     const cleanNumber = lead.whatsapp.replace(/\D/g, '');
+    if (useWebWhatsapp) {
+        return `https://web.whatsapp.com/send?phone=55${cleanNumber}`;
+    }
     return `https://wa.me/55${cleanNumber}`;
   };
 
