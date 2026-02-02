@@ -14,7 +14,7 @@ interface Props {
   currentUser: string; // 'Rafael' or 'Corat' or 'Bruna Ramalho' or 'Isabela'
 }
 
-// Som hospedado confiável
+// Som de "Ding" curto e nítido
 const NOTIFICATION_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3";
 
 const RafaelView: React.FC<Props> = ({ currentUser }) => {
@@ -96,68 +96,100 @@ const RafaelView: React.FC<Props> = ({ currentUser }) => {
       clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, []); // Run only once on mount
 
-  // Helper para tocar som
-  const playNotificationSound = () => {
+  // --- AUDIO LOGIC ---
+
+  const activateSound = () => {
     if (!audioRef.current) return;
     
-    const playPromise = audioRef.current.play();
+    // Tenta tocar o som imediatamente para obter a "permissão" do navegador
+    audioRef.current.currentTime = 0;
+    audioRef.current.volume = 1.0;
     
+    const playPromise = audioRef.current.play();
+
     if (playPromise !== undefined) {
       playPromise
         .then(() => {
-          console.log("Som tocado com sucesso.");
+          // Sucesso: navegador permitiu
+          setSoundEnabled(true);
+          console.log("Áudio ativado com sucesso.");
         })
         .catch(error => {
-          console.error("Autoplay bloqueado pelo navegador:", error);
-          setNotification({ 
-            show: true, 
-            message: "Novo Lead (O som foi bloqueado pelo navegador. Clique em 'Ativar Som' no topo)" 
-          });
+          // Falha: navegador bloqueou
+          console.error("Erro ao ativar áudio:", error);
+          alert("O navegador bloqueou o som. Por favor, clique novamente no botão de som para autorizar.");
+          setSoundEnabled(false);
         });
     }
   };
 
-  const toggleSound = () => {
-    if (!soundEnabled) {
-      setSoundEnabled(true);
-      playNotificationSound(); // Toca uma vez para testar/desbloquear
+  const playAlert = () => {
+    // Método 1: Tentar tocar o arquivo MP3
+    if (soundEnabled && audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch((e) => {
+            console.error("Falha ao tocar MP3, tentando fallback de voz...", e);
+            speakAlert(); // Fallback
+        });
     } else {
-      setSoundEnabled(false);
+        // Se som não estiver "ativado" oficialmente, tenta fallback direto
+        speakAlert();
+    }
+  };
+
+  // Método 2: Fallback (Text-to-Speech nativo do navegador)
+  // Isso geralmente funciona mesmo quando o autoplay de mídia é bloqueado
+  const speakAlert = () => {
+    if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance("Novo Lead chegou!");
+        utterance.lang = 'pt-BR';
+        utterance.rate = 1.2;
+        window.speechSynthesis.speak(utterance);
     }
   };
 
   const handleTestNotification = () => {
+    // Força o teste visual e sonoro
     const dummyLead = {
-      student_name: "Aluno Teste (Simulação)",
-      class_code: "TESTE-123"
+      student_name: "Aluno Teste",
+      class_code: "TESTE"
     };
-    handleNewLeadNotification(dummyLead);
+    
+    // Se o som não estiver ativado, tenta ativar agora
+    if (!soundEnabled) {
+        activateSound();
+    } else {
+        playAlert();
+    }
+
+    setNotification({
+      show: true,
+      message: `Teste de Notificação: ${dummyLead.student_name}`
+    });
+
+    setTimeout(() => setNotification(null), 5000);
   };
 
   const handleNewLeadNotification = (newLead: any) => {
-    console.log("Disparando notificação visual/sonora...");
+    console.log("Processando lead...", newLead);
 
-    // 1. Play Sound (se habilitado ou se for teste forçado)
-    if (audioRef.current) {
-        // Reset time to allow rapid replays
-        audioRef.current.currentTime = 0;
-        playNotificationSound();
-    }
+    // 1. Tocar Som
+    playAlert();
 
-    // 2. Show Toast
+    // 2. Mostrar Popup Visual
     setNotification({
       show: true,
       message: `Novo Lead: ${newLead.student_name} (Turma: ${newLead.class_code || 'N/A'})`
     });
 
-    // 3. Auto-hide toast after 8s
+    // 3. Esconder após 8s
     setTimeout(() => {
       setNotification(null);
     }, 8000);
 
-    // 4. Refresh List immediately
+    // 4. Atualizar lista
     refreshLeads();
   };
 
@@ -503,8 +535,13 @@ ${historyText}
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto relative">
       
-      {/* HIDDEN AUDIO ELEMENT */}
-      <audio ref={audioRef} src={NOTIFICATION_SOUND_URL} preload="auto" />
+      {/* HIDDEN AUDIO ELEMENT - CROSSORIGIN ENABLED */}
+      <audio 
+        ref={audioRef} 
+        src={NOTIFICATION_SOUND_URL} 
+        preload="auto" 
+        crossOrigin="anonymous"
+      />
 
       {/* NOTIFICATION TOAST (FIXED Z-INDEX) */}
       {notification && notification.show && (
@@ -581,7 +618,10 @@ ${historyText}
                 Testar Alerta
              </button>
              <button
-               onClick={toggleSound}
+               onClick={() => {
+                   if (!soundEnabled) activateSound();
+                   else setSoundEnabled(false);
+               }}
                className={`px-3 py-2 rounded-r-md flex items-center gap-2 text-sm font-bold transition ${soundEnabled ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-gray-50 text-gray-500 hover:bg-gray-200'}`}
                title={soundEnabled ? "Som Ativado" : "Clique para ativar som de notificação"}
              >
